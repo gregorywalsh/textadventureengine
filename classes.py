@@ -29,7 +29,7 @@ class Game:
             self._process_outcome(outcome)
         else:
             self.screen.print(
-                paragraphs=['You cannot do that.'],
+                paragraphs=['You cannot do that now.'],
                 alignment='left',
                 clear=False
             )
@@ -57,7 +57,7 @@ class Game:
         self._update_states(outcome)
 
     def _update_states(self, outcome):
-        for state_mutator in outcome.game_mutators:
+        for state_mutator in outcome.mutators:
             state_mutator.mutator_func(self)
 
     @staticmethod
@@ -140,9 +140,9 @@ class Action:
 
 class Outcome:
 
-    def __init__(self, requirements, game_mutators, text, clear):
+    def __init__(self, requirements, mutators, text, clear):
         self.requirements = requirements
-        self.game_mutators = game_mutators
+        self.mutators = mutators
         self.text = text
         self.clear = clear
 
@@ -159,20 +159,20 @@ class Outcome:
                     requirements.append(Requirement.constructor(req_type, target))
 
         clear = False
-        game_mutators = []
-        if 'game_mutators' in outcome_data:
-            for mutator_type, targets in outcome_data['game_mutators'].items():
+        mutators = []
+        if 'mutators' in outcome_data:
+            for mutator_type, targets in outcome_data['mutators'].items():
                 if mutator_type == 'player_move_to':
                     clear = True
                 for target in targets:
-                    game_mutators.append(StateMutator.constructor(mutator_type, target))
+                    mutators.append(StateMutator.constructor(mutator_type, target))
 
         text = None
         if 'text' in outcome_data:
             text = outcome_data['text']
             text = [text] if isinstance(text, str) else text
 
-        return Outcome(requirements, game_mutators, text, clear)
+        return Outcome(requirements, mutators, text, clear)
 
 
 class Requirement:
@@ -190,22 +190,22 @@ class Requirement:
     @staticmethod
     def make_check_fnc(req_type, target):
 
-        if req_type == 'player_owns':
+        if req_type == 'has_item':
             def check_func(game):
                 return target in game.player.inventory
-        elif req_type == 'not_player_owns':
+        elif req_type == 'not_has_item':
             def check_func(game):
                 return target not in game.player.inventory
-        elif req_type == 'player_has_done':
+        elif req_type == 'has_state':
             def check_func(game):
-                return target in game.player.done
-        elif req_type == 'not_player_has_done':
+                return target in game.player.states
+        elif req_type == 'not_has_state':
             def check_func(game):
-                return target not in game.player.done
-        elif req_type == 'player_visited':
+                return target not in game.player.states
+        elif req_type == 'has_visited':
             def check_func(game):
                 return target in game.player.visited_scene_names
-        elif req_type == 'not_player_visited':
+        elif req_type == 'not_has_visited':
             def check_func(game):
                 return target not in game.player.visited_scene_names
         else:

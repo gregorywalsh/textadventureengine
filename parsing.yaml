@@ -4,7 +4,7 @@ small_words:
   - an
   - the
   - in
-  - on
+  - 'on'
   - by
   - to
   - at
@@ -37,3 +37,4 @@ translations:
   examine: look
   watch: look
   see: look
+  crabs: crab
