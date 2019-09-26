@@ -78,8 +78,8 @@ beach_standing:
             - bag
         text: >
           With a wiggling toe, you patiently bait the crabs. Just as one is about to chop it off with its big
-          claw, you toss the net over it, but a moment later it crawls out and scuttles off into the sea. If only you
-          had something to keep it in.
+          claw, you toss the net over it, but a few moments later it crawls out and scuttles off into the sea. If only
+          you had something to keep it in.
 
     use net: &beach_standing_use_net
       - reqs:
@@ -136,7 +136,7 @@ cove:
     look:
       - text:
           A small blue rowing boat sits on the sand. To the west, where the cove is most secluded, a steep path
-          disappears into the cliffside.
+          disappears up into the cliffside.
 
     look boat:
       - reqs:
@@ -191,8 +191,8 @@ cove:
 
     _arrive:
       - text: >
-          Eventually, you arrive at the edge of the cove where a small boat sits on the sand. To the west, where the
-          cove is most secluded is a steep path disappears up into the cliff.
+          Eventually, you arrive at the edge of the cove where a small boat sits on the sand. A steep path disappears
+          up into the cliffside to the west.
         mutators:
           player_arrive:
             - cove
