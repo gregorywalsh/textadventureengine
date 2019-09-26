@@ -1,0 +1,36 @@
+--- !Parsing
+small_words:
+  - a
+  - an
+  - the
+  - in
+  - on
+  - by
+  - to
+  - at
+  - with
+  - from
+  - and
+  - from
+  - up
+  - down
+
+translations:
+  catch: get
+  pick: get
+  take: get
+  scoop: get
+  fill: get
+  collect: get
+  throw: use
+  toss: use
+  pour: use
+  drink: use
+  eat: use
+  walk: go
+  run: go
+  enter: go
+  head: go
+  move: go
+  lay: sit
+  lie: sit

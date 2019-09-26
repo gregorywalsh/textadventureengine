@@ -1,0 +1,113 @@
+--- !Scenes
+beach_lying:
+  actions:
+    look:
+      -
+        text: >
+          You stare up at a bleary blue sky.
+
+    stand:
+      -
+        text: >
+          You sit up, coughing and spluttering, salt water streaming from your nose. The tattered remains of your clothing
+          are drenched.
+        state_mutators:
+          player_leave:
+            - beach_standing
+
+    _arrive:
+      -
+        text:
+        - ''
+        - >
+          Lying on your back, you awaken to the sound of sea water rushing about your ears. Barely conscious, you slowly
+          open your eyes and see a glaring sky above. Ouch! Something just nipped your toe! What do you do?
+        state_mutators:
+          player_arrive:
+            - beach_lying
+
+    _no_match:
+      -
+        text: >
+          Perhaps you should stand up first before you try that...
+
+beach_standing:
+  actions:
+    look:
+      -
+        text: &look >
+          The beach where you awoke stretches out before you, jagged cliffs tower along its length. A few crabs scuttle and
+          wash around in the sea foam. To the south a old man appears to be fishing. To the north the beach curves out of
+          view.
+
+    get crab:
+      -
+        reqs:
+          player_has:
+            - crab
+        text: >
+          You already have a crab. No need to be so greedy.
+      -
+        reqs:
+          player_has:
+            - bag
+          not_player_has:
+            - crab
+        text: >
+          With a wiggling toe you patiently bait the crabs. Just as one is about to chop your toe off with its big
+          claw, you scoop it up and stuff it in your bag. Gotcha!
+        state_mutators:
+          add_to_player:
+            - crab
+      -
+        reqs:
+          not_player_has:
+            - crab
+            - bag
+        text: >
+          With a wiggling toe you patiently bait the crabs. Just as one is about to chop off your toe with its
+          claw, you scoop it up. However you don't have anything to put it in. It looks angry so you set it back
+          down and watch it scuttle off into the sea.
+
+    sit:
+      -
+        text: >
+          You sit down. A sudden wooziness comes over you.
+        state_mutators:
+          player_leave:
+            - beach_lying
+
+    go north:
+      -
+        text: >
+          You walk northwards along the base of the cliff. The occasional seagull swoops down and glides along
+          shore searching for fish in the shallow water.
+        state_mutators:
+          player_leave:
+            - cove
+
+    _arrive:
+      -
+        reqs:
+          not_player_visited:
+            - beach_standing
+        text:
+          - ''
+          - >
+            As you stagger to your feet, and wipe the sand from your sunburned face you notice a bunch of small crabs
+            skittering this way and that near your feet. Behind you to the west, an insurmountable rock face a hundred
+            feet or more high towers along the length of the beach.
+          - ''
+          - >
+            To the south a old man appears to be fishing. To the north the beach curves out of view.
+        state_mutators:
+          player_arrive:
+            - beach_standing
+      -
+        reqs:
+          player_visited:
+            - beach_standing
+        text: *look
+        state_mutators:
+          player_arrive:
+            - beach_standing
