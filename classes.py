@@ -1,29 +1,32 @@
 import os
-from yaml import add_constructor as add_yaml_constructor, load
+import yaml
 from re import search as regex_search
 from textwrap import wrap, fill, indent
 
 
 class Game:
 
-    def __init__(self, scene_data_fp, parsing_data_fp, screen, player):
-        self.scenes = self._load_scene_data(scene_data_fp)
-        self.parser = Parser.load_parser(parsing_data_fp)
+    def __init__(self, game_data_fp, parsing_data_fp, screen, player):
+        metadata, self.scenes = Game._load_game_data(game_data_fp)
+        self.title = metadata['title']
+        self.first_scene = metadata['first_scene']
+        self.first_action = metadata['first_action']
+        self.input_parser = InputParser.load_parser(parsing_data_fp)
         self.screen = screen
         self.player = player
         self.in_progress = True
 
-    def start(self, scene):
-        self.player.current_scene = self.scenes[scene]
-        self.do('_arrive')
+    def start(self):
+        self.player.current_scene = self.scenes[self.first_scene]
+        self.play(self.first_action)
         while self.in_progress:
-            self.do()
+            self.play()
 
-    def do(self, game_input=None):
-        player_input = game_input if game_input else self._get_player_input()
-        option = self._get_matching_option(player_input)
-        if option:
-            self._execute_option(option)
+    def play(self, game_input=None):
+        player_input = game_input if game_input else self.input_parser.get_player_input()
+        outcome = self._get_matching_outcome(player_input)
+        if outcome:
+            self._process_outcome(outcome)
         else:
             self.screen.print(
                 paragraphs=['You cannot do that.'],
@@ -31,44 +34,41 @@ class Game:
                 clear=False
             )
 
-    def _load_scene_data(self, scene_data_fp):
-        add_yaml_constructor(u'!Scenes', Scene.dict_constructor)
-        with open(scene_data_fp, 'r') as f:
-            scenes = load(f)
-        return scenes
+    def _get_matching_outcome(self, player_input):
+        pattern = self.input_parser.get_pattern(player_input)
 
-    def _get_player_input(self):
-        # TODO add some checks in here
-        return input('\t> ').lower()
-
-    def _get_matching_option(self, player_input):
-        pattern = self.parser.get_pattern(player_input)
-
-        matched_option = None
+        matched_outcome = None
         for action in self.player.current_scene.actions:
             if regex_search('_no_match', action.name):  # Check for a default override
-                matched_options = [option for option in action.options if option.check_reqs(self)]
-                matched_option = matched_options[0] if matched_options else None
+                matched_outcomes = [outcome for outcome in action.outcomes if outcome.check_reqs(self)]
+                matched_outcome = matched_outcomes[0] if matched_outcomes else None
             if regex_search(pattern, action.name):
-                matched_options = [option for option in action.options if option.check_reqs(self)]
-                matched_option = matched_options[0] if matched_options else None
+                matched_outcomes = [outcome for outcome in action.outcomes if outcome.check_reqs(self)]
+                matched_outcome = matched_outcomes[0] if matched_outcomes else None
                 break
-        return matched_option
+        return matched_outcome
 
-    def _execute_option(self, option):
+    def _process_outcome(self, outcome):
         self.screen.print(
-            paragraphs=option.text,
+            paragraphs=outcome.text,
             alignment='left',
-            clear=option.clear,
+            clear=outcome.clear,
         )
-        self._update_states(option)
+        self._update_states(outcome)
 
-    def _update_states(self, option):
-        for state_mutator in option.state_mutators:
+    def _update_states(self, outcome):
+        for state_mutator in outcome.game_mutators:
             state_mutator.mutator_func(self)
 
+    @staticmethod
+    def _load_game_data(game_data_fp):
+        yaml.add_constructor('!Scenes', Scene.dict_constructor, Loader=yaml.SafeLoader)
+        with open(game_data_fp, 'r') as f:
+            game_data = list(yaml.safe_load_all(stream=f))
+        return game_data
 
-class Parser:
+
+class InputParser:
 
     def __init__(self, small_words, translations):
         self.small_words = small_words
@@ -81,17 +81,22 @@ class Parser:
 
     @staticmethod
     def load_parser(parsing_data_fp):
-        add_yaml_constructor(u'!Parsing', Parser.constructor)
+        yaml.add_constructor(tag='!Parsing', constructor=InputParser.constructor, Loader=yaml.SafeLoader)
         with open(parsing_data_fp, 'r') as f:
-            parser = load(f)
+            parser = yaml.safe_load(stream=f)
         return parser
+
+    @staticmethod
+    def get_player_input():
+        # TODO add some checks in here
+        return input('\t> ').lower()
 
     @staticmethod
     def constructor(loader, node):
         data = loader.construct_mapping(node, deep=True)
         small_words = data['small_words']
         translations = data['translations']
-        return Parser(small_words, translations)
+        return InputParser(small_words, translations)
 
 
 class Scene:
@@ -110,33 +115,34 @@ class Scene:
         for scene_name in data.keys():
             scenes[scene_name] = Scene(scene_name)
         for scene_name, scene_data in data.items():
-            for action_name, options_data in scene_data['actions'].items():
-                scenes[scene_name].add_action(Action.constructor(action_name, options_data))
+            for action_name, outcomes_data in scene_data['actions'].items():
+                scenes[scene_name].add_action(Action.constructor(action_name, outcomes_data))
         return scenes
 
 
 class Action:
 
-    def __init__(self, name, options):
+    def __init__(self, name, outcomes):
         self.name = name
-        self.options = options
+        self.outcomes = outcomes
 
-    def check_options(self, game):
+    def check_outcomes(self, game):
+        # TODO
         pass
 
     @staticmethod
-    def constructor(name, options_data):
-        options = []
-        for option_data in options_data:
-            options.append(Option.constructor(option_data))
-        return Action(name, options)
+    def constructor(name, outcomes_data):
+        outcomes = []
+        for outcome_data in outcomes_data:
+            outcomes.append(Outcome.constructor(outcome_data))
+        return Action(name, outcomes)
 
 
-class Option:
+class Outcome:
 
-    def __init__(self, requirements, state_mutators, text, clear):
+    def __init__(self, requirements, game_mutators, text, clear):
         self.requirements = requirements
-        self.state_mutators = state_mutators
+        self.game_mutators = game_mutators
         self.text = text
         self.clear = clear
 
@@ -144,29 +150,29 @@ class Option:
         return all(requirement.check(game) for requirement in self.requirements)
 
     @staticmethod
-    def constructor(option_data):
+    def constructor(outcome_data):
 
-        reqirements = []
-        if 'reqs' in option_data:
-            for  req_type, targets in option_data['reqs'].items():
+        requirements = []
+        if 'reqs' in outcome_data:
+            for req_type, targets in outcome_data['reqs'].items():
                 for target in targets:
-                    reqirements.append(Requirement.constructor(req_type, target))
+                    requirements.append(Requirement.constructor(req_type, target))
 
         clear = False
-        state_mutators = []
-        if 'state_mutators' in option_data:
-            for mutator_type, targets in option_data['state_mutators'].items():
-                if mutator_type == 'player_leave':
+        game_mutators = []
+        if 'game_mutators' in outcome_data:
+            for mutator_type, targets in outcome_data['game_mutators'].items():
+                if mutator_type == 'player_move_to':
                     clear = True
                 for target in targets:
-                    state_mutators.append(StateMutator.constructor(mutator_type, target))
+                    game_mutators.append(StateMutator.constructor(mutator_type, target))
 
         text = None
-        if 'text' in option_data:
-            text = option_data['text']
+        if 'text' in outcome_data:
+            text = outcome_data['text']
             text = [text] if isinstance(text, str) else text
 
-        return Option(reqirements, state_mutators, text, clear)
+        return Outcome(requirements, game_mutators, text, clear)
 
 
 class Requirement:
@@ -184,16 +190,26 @@ class Requirement:
     @staticmethod
     def make_check_fnc(req_type, target):
 
-        if req_type == 'player_has':
-            check_func = lambda game: target in game.player.inventory
-        elif req_type == 'not_player_has':
-            check_func = lambda game: target not in game.player.inventory
+        if req_type == 'player_owns':
+            def check_func(game):
+                return target in game.player.inventory
+        elif req_type == 'not_player_owns':
+            def check_func(game):
+                return target not in game.player.inventory
+        elif req_type == 'player_has_done':
+            def check_func(game):
+                return target in game.player.done
+        elif req_type == 'not_player_has_done':
+            def check_func(game):
+                return target not in game.player.done
         elif req_type == 'player_visited':
-            check_func = lambda game: target in game.player.visited_scene_names
+            def check_func(game):
+                return target in game.player.visited_scene_names
         elif req_type == 'not_player_visited':
-            check_func = lambda game: target not in game.player.visited_scene_names
+            def check_func(game):
+                return target not in game.player.visited_scene_names
         else:
-            raise(ValueError)
+            raise ValueError
 
         return check_func
 
@@ -210,19 +226,25 @@ class StateMutator:
     @staticmethod
     def make_mutator_func(mutator_type, target):
 
-        if mutator_type == 'player_leave':
+        if mutator_type == 'player_move_to':
             def mutator_func(game):
                 game.player.current_scene = game.scenes[target]
-                game.do('_arrive')
+                game.play('_arrive')
         elif mutator_type == 'player_arrive':
             def mutator_func(game):
                 game.player.visited_scene_names.add(game.scenes[target].name)
-        elif mutator_type == 'add_to_player':
+        elif mutator_type == 'add_item':
             def mutator_func(game):
                 game.player.inventory.add(target)
-        elif mutator_type == 'remove_from_player':
+        elif mutator_type == 'remove_item':
             def mutator_func(game):
                 game.player.inventory.remove(target)
+        elif mutator_type == 'add_state':
+            def mutator_func(game):
+                game.player.states.add(target)
+        elif mutator_type == 'remove_state':
+            def mutator_func(game):
+                game.player.states.remove(target)
         else:
             raise ValueError('"{}" is not a valid mutator type'.format(mutator_type))
         return mutator_func
@@ -237,11 +259,11 @@ class Screen:
         if clear:
             Screen.clear()
             print()
-        for paragraphs in paragraphs:
+        for paragraph in paragraphs:
             if alignment == 'left':
-                print(indent(fill(paragraphs, self.width), '\t'))
+                print(indent(fill(paragraph, self.width), '\t'), '\n')
             elif alignment == 'centre':
-                print(*[indent(str.center(x, self.width), '\t') for x in wrap(paragraphs)])
+                print(*[indent(str.center(x, self.width), '\t') for x in wrap(paragraph)])
 
     @staticmethod
     def clear():
@@ -250,7 +272,8 @@ class Screen:
 
 class Player:
 
-    def __init__(self, initial_scene, initial_inventory, visited_scene_names):
+    def __init__(self, initial_scene, initial_inventory, states, visited_scene_names):
         self.current_scene = initial_scene
         self.inventory = initial_inventory
+        self.states = states
         self.visited_scene_names = visited_scene_names

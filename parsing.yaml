@@ -34,3 +34,6 @@ translations:
   move: go
   lay: sit
   lie: sit
+  examine: look
+  watch: look
+  see: look

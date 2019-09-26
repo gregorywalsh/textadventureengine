@@ -1,0 +1,155 @@
+title: 'CANGRANARIA, AN ISLAND ADVENTURE!'
+first_scene: 'beach_lying'
+first_action: '_arrive'
+
+--- !Scenes
+beach_lying:
+  actions:
+    look:
+      -
+        text: >
+          You stare up at a bleary blue sky.
+
+    stand:
+      -
+        text: >
+          You sit up, coughing and spluttering, salt water streaming from your nose. The tattered remains of your clothing
+          are drenched.
+        game_mutators:
+          player_move_to:
+            - beach_standing
+
+    _arrive:
+      -
+        text: >
+          Lying on your back, you awaken to the sound of sea water rushing about your ears. Barely conscious, you slowly
+          open your eyes and see a glaring sky above. Ouch! Something just nipped your toe! What do you do?
+        game_mutators:
+          player_arrive:
+            - beach_lying
+
+    _no_match:
+      -
+        text: >
+          Perhaps you should stand up first before you try that...
+
+beach_standing:
+  actions:
+    look:
+      -
+        text: &beach_standing_look_text >
+          The beach where you awoke stretches out before you, jagged cliffs tower along its length. A few crabs scuttle
+          and wash around in the sea foam. To the south a old man appears to be fishing. To the north the beach curves
+          out of view.
+
+    get crab:
+      -
+        reqs:
+          player_owns:
+            - crab
+        text: >
+          You already have a crab. No need to be so greedy.
+      -
+        reqs:
+          player_owns:
+            - bag
+          not_player_owns:
+            - crab
+        text: >
+          With a wiggling toe you patiently bait the crabs. Just as one is about to chop your toe off with its big
+          claw, you scoop it up and stuff it in your bag. Gotcha!
+        game_mutators:
+          add_item:
+            - crab
+      -
+        reqs:
+          not_player_owns:
+            - crab
+            - bag
+        text: >
+          With a wiggling toe you patiently bait the crabs. Just as one is about to chop off your toe with its
+          claw, you scoop it up. However you don't have anything to put it in. It looks angry so you set it back
+          down and watch it scuttle off into the sea.
+
+    sit:
+      -
+        text: >
+          You sit down. A sudden wooziness comes over you.
+        game_mutators:
+          player_move_to:
+            - beach_lying
+
+    go north: &cove_go_north
+      -
+        text: >
+          You walk northwards along the base of the cliff. The occasional seagull swoops down and glides along
+          shore searching for fish in the shallow water.
+        game_mutators:
+          player_move_to:
+            - cove
+
+    go cove: *cove_go_north
+
+    _arrive:
+      -
+        reqs:
+          not_player_visited:
+            - beach_standing
+        text:
+          - >
+            As you stagger to your feet and brush the sand from your sunburned face, you notice a bunch of small crabs
+            skittering this way at the shoreline. Behind you to the west, an impassable rock face, one hundred feet
+            or more high, towers along the length of the beach.
+          - >
+            To the south a old man appears to be fishing. To the north the beach curves out of view.
+        game_mutators:
+          player_arrive:
+            - beach_standing
+      -
+        reqs:
+          player_visited:
+            - beach_standing
+        text: *beach_standing_look_text
+        game_mutators:
+          player_arrive:
+            - beach_standing
+
+cove:
+  actions:
+    look:
+      - text:
+          A small blue rowing boat sits on the sand. To the west, where the cove is most secluded, a steep path
+          disappears into the cliffside.
+
+    look boat:
+      - text: >
+          The words "The Dancer" are scrawled across the rear of the boat in peeling red paint. A net is wedged
+          beneath it.
+        game_mutators:
+          add_state:
+            - _looked_at_dancer
+
+    get net:
+      - reqs:
+          player_visited:
+            - beach_standing
+
+    go west: &cove_go_west
+      -
+        text: >
+          Walking northwards along the base of the cliff, you see the occasional seagull swooping down to hunt for fish
+          in the shallow water.
+        game_mutators:
+          player_move_to:
+            - cove_path
+
+    go path: *cove_go_west
+
+    _arrive:
+
+      - text: >
+          Eventually, you arrive at the edge of the cove where a small boat sits on the sand. To the west, where the
+          cove is most secluded is a steep path in the cliffs.
+        game_mutators:
+          player_arrive:
+            - cove
