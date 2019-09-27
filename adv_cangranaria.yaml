@@ -1,3 +1,5 @@
+# Skeletronica format - 2019
+
 title: 'CANGRANARIA, AN ISLAND ADVENTURE!'
 first_scene: 'beach_lying'
 first_action: '_arrive'
@@ -9,6 +11,12 @@ beach_lying:
       -
         text: >
           You stare up at a bleary blue sky.
+
+    die:
+      - mutators:
+          game_end: die
+        text: >
+          You die.
 
     stand:
       - mutators:

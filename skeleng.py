@@ -1,3 +1,8 @@
+"""
+This module contains the necessary classes required to run a Skeletronica Adventure File (SAF)
+and an associated input parsing file (IPF).
+"""
+
 import os
 import yaml
 from re import search as regex_search
@@ -6,29 +11,68 @@ from textwrap import wrap, fill, indent
 
 class Game:
 
-    def __init__(self, game_data_fp, parsing_data_fp, screen, player):
+    """
+    Main object required to play the game
+
+    Args:
+        game_data_fp (str): file path to a Skeletronica adventure file (SAF)
+        parsing_data_fp (str)): file path to an input parsing file (IPF)
+        printer (Printer): a printer object
+        player (Player): a player object
+
+    Attributes:
+        title (str): The title of the game
+        player(Player): The player of the game
+        input_parser(InputParser): The game's input parser
+        printer(Printer): The game's printer
+    """
+
+    def __init__(self, game_data_fp, parsing_data_fp, printer, player):
         metadata, self.scenes = Game._load_game_data(game_data_fp)
         self.title = metadata['title']
-        self.first_scene = metadata['first_scene']
-        self.first_action = metadata['first_action']
-        self.input_parser = InputParser.load_parser(parsing_data_fp)
-        self.screen = screen
         self.player = player
-        self.in_progress = True
+        self.input_parser = InputParser.load_parser(parsing_data_fp)
+        self.printer = printer
+        self._first_scene = metadata['first_scene']
+        self._first_action = metadata['first_action']
+        self._in_progress = True
 
     def start(self):
-        self.player.current_scene = self.scenes[self.first_scene]
-        self.play(self.first_action)
-        while self.in_progress:
+        """
+        Initialises the game by printing the title screen and beginning the input/action loop
+
+        Returns:
+            None
+        """
+
+        self.printer.print(
+            paragraphs=['', 'Welcome to', '', '', self.title, '', ''],
+            alignment='centre',
+            clear=True
+        )
+        self.printer.print(
+            paragraphs=["To play the game, enter simple commands such as 'look', 'go north' or 'give apple to man'."],
+            alignment='left',
+            clear=False
+        )
+        input('\tPress "ENTER" to continue: ')
+        self.printer.print(
+            paragraphs=[],
+            alignment='left',
+            clear=True
+        )
+        self.player.current_scene = self.scenes[self._first_scene]
+        self.play(self._first_action)
+        while self._in_progress:
             self.play()
 
-    def play(self, game_input=None):
-        player_input = game_input if game_input else self.input_parser.get_player_input()
+    def play(self, override_input=None):
+        player_input = override_input if override_input else self.input_parser.get_player_input()
         outcome = self._get_matching_outcome(player_input)
         if outcome:
             self._process_outcome(outcome)
         else:
-            self.screen.print(
+            self.printer.print(
                 paragraphs=['You cannot do that now.'],
                 alignment='left',
                 clear=False
@@ -49,7 +93,7 @@ class Game:
         return matched_outcome
 
     def _process_outcome(self, outcome):
-        self.screen.print(
+        self.printer.print(
             paragraphs=outcome.text,
             alignment='left',
             clear=outcome.clear,
@@ -62,7 +106,7 @@ class Game:
 
     @staticmethod
     def _load_game_data(game_data_fp):
-        yaml.add_constructor('!Scenes', Scene.dict_constructor, Loader=yaml.SafeLoader)
+        yaml.add_constructor('!Scenes', Scene.scenes_constructor, Loader=yaml.SafeLoader)
         with open(game_data_fp, 'r') as f:
             game_data = list(yaml.safe_load_all(stream=f))
         return game_data
@@ -81,7 +125,7 @@ class InputParser:
 
     @staticmethod
     def load_parser(parsing_data_fp):
-        yaml.add_constructor(tag='!Parsing', constructor=InputParser.constructor, Loader=yaml.SafeLoader)
+        yaml.add_constructor('!Parsing', InputParser.yaml_constructor, Loader=yaml.SafeLoader)
         with open(parsing_data_fp, 'r') as f:
             parser = yaml.safe_load(stream=f)
         return parser
@@ -92,7 +136,7 @@ class InputParser:
         return input('\t> ').lower()
 
     @staticmethod
-    def constructor(loader, node):
+    def yaml_constructor(loader, node):
         data = loader.construct_mapping(node, deep=True)
         small_words = data['small_words']
         translations = data['translations']
@@ -109,11 +153,9 @@ class Scene:
         self.actions.append(action)
 
     @staticmethod
-    def dict_constructor(loader, node):
+    def scenes_constructor(loader, node):
         data = loader.construct_mapping(node, deep=True)
-        scenes = {}
-        for scene_name in data.keys():
-            scenes[scene_name] = Scene(scene_name)
+        scenes = {scene_name: Scene(scene_name) for scene_name in data.keys()}
         for scene_name, scene_data in data.items():
             for action_name, outcomes_data in scene_data['actions'].items():
                 scenes[scene_name].add_action(Action.constructor(action_name, outcomes_data))
@@ -245,19 +287,22 @@ class StateMutator:
         elif mutator_type == 'remove_state':
             def mutator_func(game):
                 game.player.states.remove(target)
+        elif mutator_type == 'game_end':
+            def mutator_func(game):
+                game._in_progress = False
         else:
             raise ValueError('"{}" is not a valid mutator type'.format(mutator_type))
         return mutator_func
 
 
-class Screen:
+class Printer:
 
     def __init__(self, width):
         self.width = width
 
     def print(self, paragraphs, alignment, clear):
         if clear:
-            Screen.clear()
+            Printer.clear()
             print()
         for paragraph in paragraphs:
             if alignment == 'left':
