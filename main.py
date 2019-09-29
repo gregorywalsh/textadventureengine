@@ -1,3 +1,4 @@
+from os import name as os_name
 from skeleng import Game, Printer, Player
 
 SCENE_DAT_FP = 'adv_cangranaria.yaml'
@@ -6,7 +7,7 @@ PARSE_DAT_FP = 'parsing.yaml'
 game = Game(
     game_data_fp=SCENE_DAT_FP,
     parsing_data_fp=PARSE_DAT_FP,
-    printer=Printer(width=80),
+    printer=Printer(width=80, system=os_name),
     player=Player(
         initial_scene=None,
         initial_inventory=set(),

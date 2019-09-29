@@ -96,7 +96,7 @@ class Game:
         self.printer.print(
             paragraphs=outcome.text,
             alignment='left',
-            clear=outcome.clear,
+            clear=outcome.clear_screen,
         )
         self._update_states(outcome)
 
@@ -297,12 +297,13 @@ class StateMutator:
 
 class Printer:
 
-    def __init__(self, width):
+    def __init__(self, width, system):
+        self.system = system
         self.width = width
 
     def print(self, paragraphs, alignment, clear):
         if clear:
-            Printer.clear()
+            Printer.clear_screen()
             print()
         for paragraph in paragraphs:
             if alignment == 'left':
@@ -310,9 +311,8 @@ class Printer:
             elif alignment == 'centre':
                 print(*[indent(str.center(x, self.width), '\t') for x in wrap(paragraph)])
 
-    @staticmethod
-    def clear():
-        os.system('cls' if os.name == 'nt' else 'clear')
+    def clear_screen(self):
+        os.system('cls' if self.system == 'nt' else 'clear')
 
 
 class Player:
