@@ -30,9 +30,12 @@ beach_lying:
       - mutators:
           player_arrive:
             - beach_lying
-        text: >
-          Lying on your back, you awaken to the sound of sea water rushing about your ears. Barely conscious, you slowly
-          open your eyes and see a glaring sky above. Ouch! Something just nipped your toe! What do you do?
+        text:
+          - >
+            Lying on your back, you awaken to the sound of sea water rushing about your ears. Barely conscious, you
+            slowly open your eyes and see a glaring sky above.
+          - >
+            Ouch! Something just nipped your toe! What do you do?
 
     _no_match:
       - text: >
@@ -43,9 +46,12 @@ beach_standing:
   actions:
     look:
       - text: &beach_standing_look_text >
-          The beach where you awoke stretches out before you, jagged cliffs tower along its length. A few crabs scuttle
-          and wash around in the sea foam. To the south a old man appears to be fishing. To the north the beach curves
-          out of view.
+          - >
+            The beach where you awoke stretches out before you, jagged cliffs tower along its length. A few crabs
+            scuttle and wash around in the sea foam.
+          - >
+            To the south a old man appears to be fishing. To the north the beach curves
+            out of view.
 
     look crab:
       - text: >

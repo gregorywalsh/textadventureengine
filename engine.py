@@ -17,14 +17,14 @@ class Game:
     Args:
         game_data_fp (str): file path to a Skeletronica adventure file (SAF)
         parsing_data_fp (str)): file path to an input parsing file (IPF)
-        printer (Printer): a printer object
+        printer (Terminal): a printer object
         player (Player): a player object
 
     Attributes:
         title (str): The title of the game
         player(Player): The player of the game
         input_parser(InputParser): The game's input parser
-        printer(Printer): The game's printer
+        printer(Terminal): The game's printer
     """
 
     def __init__(self, game_data_fp, parsing_data_fp, printer, player):
@@ -45,37 +45,31 @@ class Game:
             None
         """
 
+        self.printer.clear_screen()
         self.printer.print(
-            paragraphs=['', 'Welcome to', '', '', self.title, '', ''],
-            alignment='centre',
-            clear=True
+            paragraphs=['Welcome to', self.title],
+            alignment='centre'
         )
         self.printer.print(
             paragraphs=["To play the game, enter simple commands such as 'look', 'go north' or 'give apple to man'."],
-            alignment='left',
-            clear=False
+            alignment='left'
         )
-        input('\tPress "ENTER" to continue: ')
-        self.printer.print(
-            paragraphs=[],
-            alignment='left',
-            clear=True
-        )
+        self.printer.get_player_input(message='Press "ENTER" to continue')
+        self.printer.clear_screen()
         self.player.current_scene = self.scenes[self._first_scene]
         self.play(self._first_action)
         while self._in_progress:
             self.play()
 
     def play(self, override_input=None):
-        player_input = override_input if override_input else self.input_parser.get_player_input()
+        player_input = override_input if override_input else self.printer.get_player_input()
         outcome = self._get_matching_outcome(player_input)
         if outcome:
             self._process_outcome(outcome)
         else:
             self.printer.print(
                 paragraphs=['You cannot do that now.'],
-                alignment='left',
-                clear=False
+                alignment='left'
             )
 
     def _get_matching_outcome(self, player_input):
@@ -93,10 +87,11 @@ class Game:
         return matched_outcome
 
     def _process_outcome(self, outcome):
+        if outcome.clear:
+            self.printer.clear_screen()
         self.printer.print(
             paragraphs=outcome.text,
-            alignment='left',
-            clear=outcome.clear_screen,
+            alignment='left'
         )
         self._update_states(outcome)
 
@@ -129,11 +124,6 @@ class InputParser:
         with open(parsing_data_fp, 'r') as f:
             parser = yaml.safe_load(stream=f)
         return parser
-
-    @staticmethod
-    def get_player_input():
-        # TODO add some checks in here
-        return input('\t> ').lower()
 
     @staticmethod
     def yaml_constructor(loader, node):
@@ -295,24 +285,40 @@ class StateMutator:
         return mutator_func
 
 
-class Printer:
+class Terminal:
 
-    def __init__(self, width, system):
-        self.system = system
-        self.width = width
+    def __init__(self, width, os_name, indentation='    '):
+        self.usable_width = width - 2 * len(indentation)
+        self.os_name = os_name
+        self.indentation = indentation
 
-    def print(self, paragraphs, alignment, clear):
-        if clear:
-            Printer.clear_screen()
-            print()
+    def print(self, paragraphs, alignment):
         for paragraph in paragraphs:
             if alignment == 'left':
-                print(indent(fill(paragraph, self.width), '\t'), '\n')
+                print(indent(text=fill(text=paragraph, width=self.usable_width), prefix=self.indentation))
             elif alignment == 'centre':
-                print(*[indent(str.center(x, self.width), '\t') for x in wrap(paragraph)])
+                lines = wrap(text=paragraph, width=self.usable_width)
+                print(*[self.indentation + str.center(l, self.usable_width) for l in lines], sep='\n')
+            print()  # pad bottom of paragraphs
+
+    def get_player_input(self, message=None):
+        # TODO add some checks in here
+        if message:
+            message = message + ' > '
+        else:
+            message = '> '
+        player_input = input(
+            indent(
+                text=fill(text=message, width=self.usable_width, drop_whitespace=False),
+                prefix=self.indentation
+            )
+        ).lower()
+        print()  # pad player input
+        return player_input
 
     def clear_screen(self):
-        os.system('cls' if self.system == 'nt' else 'clear')
+        os.system(command='cls' if self.os_name == 'nt' else 'clear')
+        print()  # pad top of screen
 
 
 class Player:
