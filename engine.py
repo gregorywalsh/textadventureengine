@@ -1,6 +1,8 @@
+# Created by Gregory Walsh
+
 """
-This module contains the necessary classes required to run a Skeletronica Adventure File (SAF)
-and an associated input parsing file (IPF).
+This module contains the necessary classes required to run a YAML Adventure File (YAF)
+and an associated Input Parsing File (IPF).
 """
 
 import os
@@ -8,31 +10,36 @@ import yaml
 from re import search as regex_search
 from textwrap import wrap, fill, indent
 
+OS_NAME = os.name
+if os.name == 'nt':
+    import msvcrt
+else:
+    import curses
+
 
 class Game:
-
     """
-    Main object required to play the game
+    Use this class to run a new game from an Adventure File (SAF).
 
     Args:
-        game_data_fp (str): file path to a Skeletronica adventure file (SAF)
+        game_data_fp (str): file path to a SAF
         parsing_data_fp (str)): file path to an input parsing file (IPF)
-        printer (Terminal): a printer object
+        shell (Shell): a shell object
         player (Player): a player object
 
     Attributes:
         title (str): The title of the game
         player(Player): The player of the game
-        input_parser(InputParser): The game's input parser
-        printer(Terminal): The game's printer
+        input_parser(_InputParser): The game's input parser
+        shell(Shell): The game's shell
     """
 
-    def __init__(self, game_data_fp, parsing_data_fp, printer, player):
+    def __init__(self, game_data_fp, parsing_data_fp, shell, player):
         metadata, self.scenes = Game._load_game_data(game_data_fp)
         self.title = metadata['title']
         self.player = player
-        self.input_parser = InputParser.load_parser(parsing_data_fp)
-        self.printer = printer
+        self.input_parser = _InputParser.load_parser(parsing_data_fp)
+        self.shell = shell
         self._first_scene = metadata['first_scene']
         self._first_action = metadata['first_action']
         self._in_progress = True
@@ -44,70 +51,88 @@ class Game:
         Returns:
             None
         """
-
-        self.printer.clear_screen()
-        self.printer.print(
+        self.shell.clear()
+        self.shell.print(
             paragraphs=['Welcome to', self.title],
             alignment='centre'
         )
-        self.printer.print(
-            paragraphs=["To play the game, enter simple commands such as 'look', 'go north' or 'give apple to man'."],
+        self.shell.print(
+            paragraphs=['To play the game, enter simple commands such as "look", "go north" or "give apple to man".'],
             alignment='left'
         )
-        self.printer.get_player_input(message='Press "ENTER" to continue')
-        self.printer.clear_screen()
+        self.shell.pause()
+        self.shell.clear()
         self.player.current_scene = self.scenes[self._first_scene]
-        self.play(self._first_action)
+        self._play(self._first_action)
         while self._in_progress:
-            self.play()
+            self._play()
 
-    def play(self, override_input=None):
-        player_input = override_input if override_input else self.printer.get_player_input()
-        outcome = self._get_matching_outcome(player_input)
+    def _play(self, override_input=None):
+        """ Performs a single game loop:
+            request input -> find matching action -> determine outcome and execute
+        """
+        player_input = override_input if override_input else self.shell.get_input()
+        action = self._match_action(player_input=player_input)
+        outcome = self._match_outcome(action)
         if outcome:
             self._process_outcome(outcome)
         else:
-            self.printer.print(
+            self.shell.print(
                 paragraphs=['You cannot do that now.'],
                 alignment='left'
             )
 
-    def _get_matching_outcome(self, player_input):
+    def _match_action(self, player_input):
+        """ Given an input, returns the first matching action. Falls back to a default if there is one."""
         pattern = self.input_parser.get_pattern(player_input)
-
-        matched_outcome = None
+        deault_action = None
         for action in self.player.current_scene.actions:
             if regex_search('_no_match', action.name):  # Check for a default override
-                matched_outcomes = [outcome for outcome in action.outcomes if outcome.check_reqs(self)]
-                matched_outcome = matched_outcomes[0] if matched_outcomes else None
+                deault_action = action
             if regex_search(pattern, action.name):
-                matched_outcomes = [outcome for outcome in action.outcomes if outcome.check_reqs(self)]
-                matched_outcome = matched_outcomes[0] if matched_outcomes else None
-                break
-        return matched_outcome
+                return action
+        return deault_action
+
+    def _match_outcome(self, action):
+        """ Given an action, returns the first possible matching outcome by checking requirements against
+            the player's state.
+            Examples:
+                1. Player WITHOUT 'knife' attempts cut 'rope' by inputting "cut rope". The outcome may
+                   be that the rope remains intact, and a msg saying so could be displayed.
+                2. Player WITH 'knife' attempts cut 'rope' by inputting "cut rope". The outcome may
+                   be that the rope is cut and placed in their inventory. A msg saying so could also be displayed.
+        """
+        matched_outcomes = [outcome for outcome in action.outcomes if outcome.check_reqs(self)]
+        return matched_outcomes[0] if matched_outcomes else None
 
     def _process_outcome(self, outcome):
+        """Processes outcome, e.g. change player location, and updates shell"""
         if outcome.clear:
-            self.printer.clear_screen()
-        self.printer.print(
+            self.shell.clear()
+        self.shell.print(
             paragraphs=outcome.text,
             alignment='left'
         )
         self._update_states(outcome)
 
     def _update_states(self, outcome):
+        """Given an outcome, modifies player states e.g. location, inventory."""
         for state_mutator in outcome.mutators:
             state_mutator.mutator_func(self)
 
     @staticmethod
     def _load_game_data(game_data_fp):
-        yaml.add_constructor('!Scenes', Scene.scenes_constructor, Loader=yaml.SafeLoader)
+        """Loads a YAML formatted SAF game file from disk"""
+        yaml.add_constructor('!Scenes', _Scene.scenes_constructor, Loader=yaml.SafeLoader)
         with open(game_data_fp, 'r') as f:
             game_data = list(yaml.safe_load_all(stream=f))
         return game_data
 
 
-class InputParser:
+class _InputParser:
+    """
+
+    """
 
     def __init__(self, small_words, translations):
         self.small_words = small_words
@@ -120,7 +145,7 @@ class InputParser:
 
     @staticmethod
     def load_parser(parsing_data_fp):
-        yaml.add_constructor('!Parsing', InputParser.yaml_constructor, Loader=yaml.SafeLoader)
+        yaml.add_constructor('!Parsing', _InputParser.yaml_constructor, Loader=yaml.SafeLoader)
         with open(parsing_data_fp, 'r') as f:
             parser = yaml.safe_load(stream=f)
         return parser
@@ -130,10 +155,10 @@ class InputParser:
         data = loader.construct_mapping(node, deep=True)
         small_words = data['small_words']
         translations = data['translations']
-        return InputParser(small_words, translations)
+        return _InputParser(small_words, translations)
 
 
-class Scene:
+class _Scene:
 
     def __init__(self, name):
         self.name = name
@@ -145,14 +170,14 @@ class Scene:
     @staticmethod
     def scenes_constructor(loader, node):
         data = loader.construct_mapping(node, deep=True)
-        scenes = {scene_name: Scene(scene_name) for scene_name in data.keys()}
+        scenes = {scene_name: _Scene(scene_name) for scene_name in data.keys()}
         for scene_name, scene_data in data.items():
             for action_name, outcomes_data in scene_data['actions'].items():
-                scenes[scene_name].add_action(Action.constructor(action_name, outcomes_data))
+                scenes[scene_name].add_action(_Action.constructor(action_name, outcomes_data))
         return scenes
 
 
-class Action:
+class _Action:
 
     def __init__(self, name, outcomes):
         self.name = name
@@ -166,11 +191,11 @@ class Action:
     def constructor(name, outcomes_data):
         outcomes = []
         for outcome_data in outcomes_data:
-            outcomes.append(Outcome.constructor(outcome_data))
-        return Action(name, outcomes)
+            outcomes.append(_Outcome.constructor(outcome_data))
+        return _Action(name, outcomes)
 
 
-class Outcome:
+class _Outcome:
 
     def __init__(self, requirements, mutators, text, clear):
         self.requirements = requirements
@@ -188,7 +213,7 @@ class Outcome:
         if 'reqs' in outcome_data:
             for req_type, targets in outcome_data['reqs'].items():
                 for target in targets:
-                    requirements.append(Requirement.constructor(req_type, target))
+                    requirements.append(_Requirement.constructor(req_type, target))
 
         clear = False
         mutators = []
@@ -197,17 +222,17 @@ class Outcome:
                 if mutator_type == 'player_move_to':
                     clear = True
                 for target in targets:
-                    mutators.append(StateMutator.constructor(mutator_type, target))
+                    mutators.append(_StateMutator.constructor(mutator_type, target))
 
         text = None
         if 'text' in outcome_data:
             text = outcome_data['text']
             text = [text] if isinstance(text, str) else text
 
-        return Outcome(requirements, mutators, text, clear)
+        return _Outcome(requirements, mutators, text, clear)
 
 
-class Requirement:
+class _Requirement:
 
     def __init__(self, test_func):
         self.test_func = test_func
@@ -217,7 +242,7 @@ class Requirement:
 
     @staticmethod
     def constructor(req_type, target):
-        return Requirement(test_func=Requirement.make_check_fnc(req_type, target))
+        return _Requirement(test_func=_Requirement.make_check_fnc(req_type, target))
 
     @staticmethod
     def make_check_fnc(req_type, target):
@@ -246,14 +271,14 @@ class Requirement:
         return check_func
 
 
-class StateMutator:
+class _StateMutator:
 
     def __init__(self, mutator_func):
         self.mutator_func = mutator_func
 
     @staticmethod
     def constructor(mutator_type, target):
-        return StateMutator(mutator_func=StateMutator.make_mutator_func(mutator_type, target))
+        return _StateMutator(mutator_func=_StateMutator.make_mutator_func(mutator_type, target))
 
     @staticmethod
     def make_mutator_func(mutator_type, target):
@@ -261,7 +286,7 @@ class StateMutator:
         if mutator_type == 'player_move_to':
             def mutator_func(game):
                 game.player.current_scene = game.scenes[target]
-                game.play('_arrive')
+                game._play('_arrive')
         elif mutator_type == 'player_arrive':
             def mutator_func(game):
                 game.player.visited_scene_names.add(game.scenes[target].name)
@@ -285,11 +310,10 @@ class StateMutator:
         return mutator_func
 
 
-class Terminal:
+class Shell:
 
-    def __init__(self, width, os_name, indentation='    '):
+    def __init__(self, width, indentation='    '):
         self.usable_width = width - 2 * len(indentation)
-        self.os_name = os_name
         self.indentation = indentation
 
     def print(self, paragraphs, alignment):
@@ -301,23 +325,35 @@ class Terminal:
                 print(*[self.indentation + str.center(l, self.usable_width) for l in lines], sep='\n')
             print()  # pad bottom of paragraphs
 
-    def get_player_input(self, message=None):
+    def get_input(self, message=None):
         # TODO add some checks in here
-        if message:
-            message = message + ' > '
-        else:
-            message = '> '
-        player_input = input(
-            indent(
-                text=fill(text=message, width=self.usable_width, drop_whitespace=False),
-                prefix=self.indentation
-            )
-        ).lower()
-        print()  # pad player input
+        player_input = None
+        while not player_input:
+            if message:
+                message = message + ' > '
+            else:
+                message = '> '
+            player_input = input(
+                indent(
+                    text=fill(text=message, width=self.usable_width, drop_whitespace=False),
+                    prefix=self.indentation
+                )
+            ).lower()
+            player_input = ''.join(cha for cha in player_input if cha.isalnum() or cha == ' ')
+            print()  # pad player input
         return player_input
 
-    def clear_screen(self):
-        os.system(command='cls' if self.os_name == 'nt' else 'clear')
+    def pause(self):
+        if OS_NAME == 'nt':
+            self.print(paragraphs=["Press any key to continue..."], alignment='left')
+            _ = msvcrt.getch()
+        else:
+            command = 'read -s -n 1 -p "{i}Press any key to continue..."'.format(i=self.indentation)
+            os.system(command=command)
+
+    @staticmethod
+    def clear():
+        os.system(command='cls' if OS_NAME == 'nt' else 'clear')
         print()  # pad top of screen
 
 
