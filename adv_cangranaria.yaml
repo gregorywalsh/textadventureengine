@@ -1,4 +1,4 @@
-# Skeletronica format - 2019
+# YAML Adventure File YAF -  format v1 - 2019
 
 title: 'CANGRANARIA, AN ISLAND ADVENTURE!'
 first_scene: 'beach_lying'
@@ -16,7 +16,7 @@ beach_lying:
       - mutators:
           game_end: die
         text: >
-          You die.
+          You close your eyes and let your body go limp. It was all just too much...
 
     stand:
       - mutators:
@@ -33,7 +33,7 @@ beach_lying:
         text:
           - >
             Lying on your back, you awaken to the sound of sea water rushing about your ears. Barely conscious, you
-            slowly open your eyes and see a glaring sky above.
+            open your eyes slowly and see a glaring sky above.
           - >
             Ouch! Something just nipped your toe! What do you do?
 

@@ -7,14 +7,12 @@ and an associated Input Parsing File (IPF).
 
 import os
 import yaml
-from re import search as regex_search
+from pickle import dump
 from textwrap import wrap, fill, indent
 
 OS_NAME = os.name
 if os.name == 'nt':
     import msvcrt
-else:
-    import curses
 
 
 class Game:
@@ -23,37 +21,32 @@ class Game:
 
     Args:
         game_data_fp (str): file path to a SAF
-        parsing_data_fp (str)): file path to an input parsing file (IPF)
-        shell (Shell): a shell object
-        player (Player): a player object
+        input_parser (InputParser): an InputParser object for parsing Player inputs
+        shell (Shell): a Shell for displaying the game and getting inputs
+        player (Player): a Player object with state info such as inventory, location, etc.
 
     Attributes:
-        title (str): The title of the game
-        player(Player): The player of the game
-        input_parser(_InputParser): The game's input parser
-        shell(Shell): The game's shell
+        player(Player): The Player of the game
+        shell(Shell): The Game's shell. Can be used to print messages
     """
 
-    def __init__(self, game_data_fp, parsing_data_fp, shell, player):
-        metadata, self.scenes = Game._load_game_data(game_data_fp)
-        self.title = metadata['title']
+    def __init__(self, game_data_fp, input_parser, shell, player):
         self.player = player
-        self.input_parser = _InputParser.load_parser(parsing_data_fp)
         self.shell = shell
-        self._first_scene = metadata['first_scene']
-        self._first_action = metadata['first_action']
+        self._metadata, self.scenes = Game._load_game_data(game_data_fp)
+        self._input_parser = input_parser
         self._in_progress = True
 
     def start(self):
         """
-        Initialises the game by printing the title screen and beginning the input/action loop
+        Initialises the Game by printing the title screen and beginning the input/action loop
 
         Returns:
             None
         """
         self.shell.clear()
         self.shell.print(
-            paragraphs=['Welcome to', self.title],
+            paragraphs=['Welcome to', self._metadata['title']],
             alignment='centre'
         )
         self.shell.print(
@@ -62,17 +55,18 @@ class Game:
         )
         self.shell.pause()
         self.shell.clear()
-        self.player.current_scene = self.scenes[self._first_scene]
-        self._play(self._first_action)
+        self.player.current_scene = self.scenes[self._metadata['first_scene']]
+        self._play(self._metadata['first_action'])
         while self._in_progress:
             self._play()
 
     def _play(self, override_input=None):
         """ Performs a single game loop:
-            request input -> find matching action -> determine outcome and execute
+            request input -> find matching Action -> determine Outcome and execute associated Mutators
         """
-        player_input = override_input if override_input else self.shell.get_input()
-        action = self._match_action(player_input=player_input)
+        text_input = override_input if override_input else self.shell.get_player_input()
+        action_key = self._input_parser.generate_action_key(text_input=text_input)
+        action = self._match_action(action_key=action_key)
         outcome = self._match_outcome(action)
         if outcome:
             self._process_outcome(outcome)
@@ -82,20 +76,19 @@ class Game:
                 alignment='left'
             )
 
-    def _match_action(self, player_input):
-        """ Given an input, returns the first matching action. Falls back to a default if there is one."""
-        pattern = self.input_parser.get_pattern(player_input)
+    def _match_action(self, action_key):
+        """ Given an input, returns the first matching Action. Falls back to a default if there is one."""
         deault_action = None
         for action in self.player.current_scene.actions:
-            if regex_search('_no_match', action.name):  # Check for a default override
+            if action.key_set == {'_no_match'}:  # Check for a default override
                 deault_action = action
-            if regex_search(pattern, action.name):
+            if action.key_set == action_key:
                 return action
         return deault_action
 
     def _match_outcome(self, action):
-        """ Given an action, returns the first possible matching outcome by checking requirements against
-            the player's state.
+        """ Given an Action, returns the first possible matching Outcome by checking requirements against
+            the Player's state.
             Examples:
                 1. Player WITHOUT 'knife' attempts cut 'rope' by inputting "cut rope". The outcome may
                    be that the rope remains intact, and a msg saying so could be displayed.
@@ -129,70 +122,105 @@ class Game:
         return game_data
 
 
-class _InputParser:
+class InputParser:
+    """
+    Converts Player inputs into action-keys that can then be used to find matching Actions for a Scene.
+
+    Args:
+        stop_words (iter of str): short words that should be excluded when creating action-keys
+        synonyms (dict): mappings from synonyms (take, grab) to a canonical version (get)
     """
 
-    """
+    def __init__(self, stop_words, synonyms):
+        self._stop_words = stop_words
+        self._synonyms = synonyms
 
-    def __init__(self, small_words, translations):
-        self.small_words = small_words
-        self.translations = translations
+    def generate_action_key(self, text_input):
+        """
+        Converts a player input to an action-key by removing stopwords and converting synonyms to their
+        canonical versions.
 
-    def get_pattern(self, player_input):
-        important_words = [word for word in player_input.split(' ') if word not in self.small_words]
-        translated_words = [self.translations[word] if word in self.translations else word for word in important_words]
-        return '^{words}$'.format(words=' '.join(translated_words))
+        Returns:
+            An action-key (set)
+        """
+        important_words = [w for w in text_input.split(' ') if w not in self._stop_words]
+        translated_action_key = {self._synonyms[w] if w in self._synonyms else w for w in important_words}
+        return translated_action_key
 
-    @staticmethod
-    def load_parser(parsing_data_fp):
-        yaml.add_constructor('!Parsing', _InputParser.yaml_constructor, Loader=yaml.SafeLoader)
+    @classmethod
+    def construct_from_yaml(cls, parsing_data_fp):
+        """
+        Constructs an InputParser from an appropriately formatted YAML file.
+
+        Example YAML file::
+
+            --- !Parsing
+                small_words:
+                  - a
+                  - an
+                  - the
+                  - in
+                  - 'on'  # NOTE: 'on' without quotes is converted to True
+
+                translations:
+                  catch: get
+                  pick: get
+                  take: get
+                  scoop: get
+                  fill: get
+                  collect: get
+
+        Args:
+            parsing_data_fp (str): file path of a YAML encoded parsing data
+
+        Returns:
+            An InputParser
+        """
+        def constructor(loader, node):
+            """defines a constructor for a PyYAML loader"""
+            data = loader.construct_mapping(node, deep=True)
+            small_words = data['small_words']
+            translations = data['translations']
+            return cls(small_words, translations)
+
+        yaml.add_constructor('!Parsing', constructor, Loader=yaml.SafeLoader)
         with open(parsing_data_fp, 'r') as f:
-            parser = yaml.safe_load(stream=f)
-        return parser
-
-    @staticmethod
-    def yaml_constructor(loader, node):
-        data = loader.construct_mapping(node, deep=True)
-        small_words = data['small_words']
-        translations = data['translations']
-        return _InputParser(small_words, translations)
+            input_parser = yaml.safe_load(stream=f)
+        return input_parser
 
 
 class _Scene:
+    """
+    Scene object containing a list of possible actions.
 
+    Args:
+        stop_words (iter of str): short words that should be excluded when creating action-keys
+        synonyms (dict): mappings from synonyms (take, grab) to a canonical version (get)
+    """
     def __init__(self, name):
         self.name = name
         self.actions = []
-
-    def add_action(self, action):
-        self.actions.append(action)
 
     @staticmethod
     def scenes_constructor(loader, node):
         data = loader.construct_mapping(node, deep=True)
         scenes = {scene_name: _Scene(scene_name) for scene_name in data.keys()}
         for scene_name, scene_data in data.items():
-            for action_name, outcomes_data in scene_data['actions'].items():
-                scenes[scene_name].add_action(_Action.constructor(action_name, outcomes_data))
+            for action_key, outcomes_data in scene_data['actions'].items():
+                scenes[scene_name].actions.append(_Action(action_key, outcomes_data))
         return scenes
 
 
 class _Action:
 
-    def __init__(self, name, outcomes):
-        self.name = name
-        self.outcomes = outcomes
+    def __init__(self, action_key, outcomes_data):
+        self.key_set = {action_key}
+        self.outcomes = [_Outcome.constructor(outcome_data) for outcome_data in outcomes_data]
+        self.check_outcomes()
 
-    def check_outcomes(self, game):
+    def check_outcomes(self):
         # TODO
         pass
-
-    @staticmethod
-    def constructor(name, outcomes_data):
-        outcomes = []
-        for outcome_data in outcomes_data:
-            outcomes.append(_Outcome.constructor(outcome_data))
-        return _Action(name, outcomes)
 
 
 class _Outcome:
@@ -325,7 +353,7 @@ class Shell:
                 print(*[self.indentation + str.center(l, self.usable_width) for l in lines], sep='\n')
             print()  # pad bottom of paragraphs
 
-    def get_input(self, message=None):
+    def get_player_input(self, message=None):
         # TODO add some checks in here
         player_input = None
         while not player_input:
@@ -364,3 +392,7 @@ class Player:
         self.inventory = initial_inventory
         self.states = states
         self.visited_scene_names = visited_scene_names
+
+    def save(self, fp):
+        with open(file=fp, mode='wb') as f:
+            dump(obj=self, file=f)
