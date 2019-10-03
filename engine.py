@@ -7,6 +7,7 @@ and an associated Input Parsing File (IPF).
 
 import os
 import yaml
+from collections import defaultdict
 from pickle import dump
 from textwrap import wrap, fill, indent
 
@@ -26,8 +27,8 @@ class Game:
         player (Player): a Player object with state info such as inventory, location, etc.
 
     Attributes:
-        player(Player): The Player of the game
-        shell(Shell): The Game's shell. Can be used to print messages
+        player (Player): The Player of the game
+        shell (Shell): The Game's shell. Can be used to print messages
     """
 
     def __init__(self, game_data_fp, input_parser, shell, player):
@@ -65,8 +66,8 @@ class Game:
             request input -> find matching Action -> determine Outcome and execute associated Mutators
         """
         text_input = override_input if override_input else self.shell.get_player_input()
-        action_key = self._input_parser.generate_action_key(text_input=text_input)
-        action = self._match_action(action_key=action_key)
+        input_action_id = self._input_parser.generate_action_id(text_input=text_input)
+        action = self._match_action(input_action_id=input_action_id)
         outcome = self._match_outcome(action)
         if outcome:
             self._process_outcome(outcome)
@@ -76,15 +77,16 @@ class Game:
                 alignment='left'
             )
 
-    def _match_action(self, action_key):
+    def _match_action(self, input_action_id):
         """ Given an input, returns the first matching Action. Falls back to a default if there is one."""
-        deault_action = None
+        default_action = None
         for action in self.player.current_scene.actions:
-            if action.key_set == {'_no_match'}:  # Check for a default override
-                deault_action = action
-            if action.key_set == action_key:
+            action_id = self._input_parser.generate_action_id(action.key)
+            if action_id == {'_no_match'}:  # Check for a default override
+                default_action = action
+            if input_action_id == action_id:
                 return action
-        return deault_action
+        return default_action
 
     def _match_outcome(self, action):
         """ Given an Action, returns the first possible matching Outcome by checking requirements against
@@ -115,8 +117,8 @@ class Game:
 
     @staticmethod
     def _load_game_data(game_data_fp):
-        """Loads a YAML formatted SAF game file from disk"""
-        yaml.add_constructor('!Scenes', _Scene.scenes_constructor, Loader=yaml.SafeLoader)
+        """Loads a YAML Adventure File (game metadata and a list of Scenes) from disk"""
+        yaml.add_constructor('!Scenes', _Scene.make_scenes_constructor(), Loader=yaml.SafeLoader)
         with open(game_data_fp, 'r') as f:
             game_data = list(yaml.safe_load_all(stream=f))
         return game_data
@@ -135,16 +137,16 @@ class InputParser:
         self._stop_words = stop_words
         self._synonyms = synonyms
 
-    def generate_action_key(self, text_input):
+    def generate_action_id(self, text_input):
         """
         Converts a player input to an action-key by removing stopwords and converting synonyms to their
         canonical versions.
 
         Returns:
-            An action-key (set)
+            An action-key (frozenset)
         """
         important_words = [w for w in text_input.split(' ') if w not in self._stop_words]
-        translated_action_key = {self._synonyms[w] if w in self._synonyms else w for w in important_words}
+        translated_action_key = frozenset(self._synonyms[w] if w in self._synonyms else w for w in important_words)
         return translated_action_key
 
     @classmethod
@@ -197,28 +199,41 @@ class _Scene:
         stop_words (iter of str): short words that should be excluded when creating action-keys
         synonyms (dict): mappings from synonyms (take, grab) to a canonical version (get)
     """
-    def __init__(self, name):
+    def __init__(self, name, actions_data):
         self.name = name
-        self.actions = []
+        self.actions = [_Action(action=a, outcomes_data=o) for a, o in actions_data.items()]
 
-    @staticmethod
-    def scenes_constructor(loader, node):
-        data = loader.construct_mapping(node, deep=True)
-        scenes = {scene_name: _Scene(scene_name) for scene_name in data.keys()}
-        for scene_name, scene_data in data.items():
-            for action_key, outcomes_data in scene_data['actions'].items():
-                scenes[scene_name].actions.append(_Action(action_key, outcomes_data))
-        return scenes
+    @classmethod
+    def make_scenes_constructor(cls):
+        """Returns a PyYAMP constructor that generates a list of all scenes from the YAF"""
+        def scenes_constructor(loader, node):
+            data = loader.construct_mapping(node, deep=True)
+            scenes = {}
+            for scene_name, scene_data in data.items():
+                scenes[scene_name] = _Scene(name=scene_name, actions_data=scene_data['actions'])
+            return scenes
+        return scenes_constructor
 
 
 class _Action:
+    """
+    Scene object containing a list of possible actions.
 
-    def __init__(self, action_key, outcomes_data):
-        self.key_set = {action_key}
+    Args:
+        key (str): short words that should be excluded when creating action-keys
+        outcomes_data (list of dicts): one data dict for each possible Outcome for the action
+
+    Attributes:
+        key (str): The Player of the game
+        outcomes (list of Outcomes): A list containing all possible Outcomes for the action
+    """
+
+    def __init__(self, action, outcomes_data):
+        self.key = action
         self.outcomes = [_Outcome.constructor(outcome_data) for outcome_data in outcomes_data]
-        self.check_outcomes()
+        self._check_outcomes()
 
-    def check_outcomes(self):
+    def _check_outcomes(self):
         # TODO
         pass
 
@@ -356,11 +371,11 @@ class Shell:
     def get_player_input(self, message=None):
         # TODO add some checks in here
         player_input = None
+        if message:
+            message = message + ' > '
+        else:
+            message = '> '
         while not player_input:
-            if message:
-                message = message + ' > '
-            else:
-                message = '> '
             player_input = input(
                 indent(
                     text=fill(text=message, width=self.usable_width, drop_whitespace=False),
