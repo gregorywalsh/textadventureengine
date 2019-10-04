@@ -153,23 +153,23 @@ class InputParser:
         """
         Constructs an InputParser from an appropriately formatted YAML file.
 
-        Example YAML file::
+            Example YAML file::
 
-            --- !Parsing
-                small_words:
-                  - a
-                  - an
-                  - the
-                  - in
-                  - 'on'  # NOTE: 'on' without quotes is converted to True
+                --- !Parsing
+                  stop_words:
+                    - a
+                    - an
+                    - the
+                    - in
+                    - 'on'  # NOTE: 'on' without quotes is converted to True
 
-                translations:
-                  catch: get
-                  pick: get
-                  take: get
-                  scoop: get
-                  fill: get
-                  collect: get
+                  translations:
+                    catch: get
+                    pick: get
+                    take: get
+                    scoop: get
+                    fill: get
+                    collect: get
 
         Args:
             parsing_data_fp (str): file path of a YAML encoded parsing data
@@ -180,9 +180,9 @@ class InputParser:
         def constructor(loader, node):
             """defines a constructor for a PyYAML loader"""
             data = loader.construct_mapping(node, deep=True)
-            small_words = data['small_words']
-            translations = data['translations']
-            return cls(small_words, translations)
+            stop_words = data['stop_words']
+            synonyms = data['synonyms']
+            return cls(stop_words=stop_words, synonyms=synonyms)
 
         yaml.add_constructor('!Parsing', constructor, Loader=yaml.SafeLoader)
         with open(parsing_data_fp, 'r') as f:
@@ -193,12 +193,6 @@ class InputParser:
 class _Scene:
     """
     Scene object containing a list of possible Actions.
-
-    Example YAML element::
-    - !Scene
-      id: a_unique_scene_id
-      actions:
-        [A LIST OF ACTIONS HERE]
 
     Args:
         key (str): name of the Scene
@@ -219,7 +213,17 @@ class _Scene:
 
     @classmethod
     def pyyaml_constructor(cls, loader, node):
-        """PyYAML constructor that generates a Scene from a YAF element tagged with '!Scene' """
+        """
+        Constructor for a PyYAML loader that generates Scenes from YAF elements tagged with '!Scene'
+
+            Example YAML element::
+
+                - !Scene
+                  id: a_unique_scene_id
+                  actions:
+                    [A LIST OF ACTIONS HERE]
+
+        """
         data = loader.construct_mapping(node, deep=True)
         return cls(key=data['key'], actions_list=data['actions'])
 
@@ -240,23 +244,36 @@ class _Action:
     def __init__(self, key, outcomes):
         self.key = key
         self.outcomes = outcomes
-        self._check_outcomes()
+        self._validate_outcomes()
 
     @classmethod
     def make_pyyaml_constructor(cls, input_parser):
+        """
+        Creates a pyyaml constructor for Actions with a specific input_parser.
+
+        Args:
+            input_parser (InputParser): an InputParser that will be used to process the action keys
+
+        Returns:
+            A pyyaml_constructor for Actions
+        """
         def pyyaml_constructor(loader, node):
-            """PyYAMP constructor that generates an Action from a YAF element tagged with '!Action' """
+            """
+            Constructor for a PyYAML loader that generates Actions from a YAF elements tagged with '!Action'
+            # TODO: DOCUMENTATION
+            """
             data = loader.construct_mapping(node, deep=True)
             key = input_parser.generate_action_key(data['key'])
             return cls(key=key, outcomes=data['outcomes'])
         return pyyaml_constructor
 
-    def _check_outcomes(self):
+    def _validate_outcomes(self):
         # TODO
         pass
 
 
 class _Outcome:
+    # TODO: DOCUMENTATION
 
     def __init__(self, clear, requirements=None, mutators=None, text=None):
         self.requirements = requirements if requirements else []
@@ -265,32 +282,42 @@ class _Outcome:
         self.clear = clear
 
     def check_requirements(self, player):
+        # TODO: DOCUMENTATION
         return all(requirement.check(player) for requirement in self.requirements)
 
     @classmethod
     def pyyaml_constructor(cls, loader, node):
-        """PyYAML constructor that generates an Outcome from a YAF element tagged with '!Outcome' """
+        """
+        Constructor for a PyYAML loader that generates Outcomes from a YAF elements tagged with '!Outcome'
+        # TODO: DOCUMENTATION
+        """
         data = loader.construct_mapping(node, deep=True)
         return cls(requirements=data.get('requirements'), mutators=data.get('mutators'),
                    text=data.get('text'), clear=False)
 
 
 class _Requirement:
+    # TODO: DOCUMENTATION
 
     def __init__(self, test_func):
         self.test_func = test_func
 
     def check(self, player):
+        # TODO: DOCUMENTATION
         return self.test_func(player)
 
     @classmethod
     def pyyaml_constructor(cls, loader, node):
-        """PyYAML constructor that generates an Outcome from a YAF element tagged with '!Outcome' """
+        """
+        Constructor for a PyYAML loader that generates Requirements from YAF elements tagged with '!Requirement'
+        # TODO: DOCUMENTATION
+        """
         data = loader.construct_mapping(node, deep=True)
         return cls(test_func=_Requirement.make_check_fnc(type_=data.get('type'), target=data.get('target')))
 
     @staticmethod
     def make_check_fnc(type_, target):
+        # TODO: DOCUMENTATION
         if type_ == 'has_item':
             def check_func(player):
                 return target in player.inventory
@@ -315,19 +342,23 @@ class _Requirement:
 
 
 class _Mutator:
+    # TODO: DOCUMENTATION
 
     def __init__(self, mutator_func):
         self.mutator_func = mutator_func
 
     @classmethod
     def construct_from_yaml(cls, loader, node):
-        """PyYAMP constructor that generates an Outcome from a YAF element tagged with '!Outcome' """
+        """
+        Constructor for a PyYAML loader that generates a Mutators from YAF elements tagged with '!Mutator'
+        # TODO: DOCUMENTATION
+        """
         data = loader.construct_mapping(node, deep=True)
         return cls(mutator_func=_Mutator.make_mutator_func(type_=data.get('type'), target=data.get('target')))
 
     @staticmethod
     def make_mutator_func(type_, target):
-
+        # TODO: DOCUMENTATION
         if type_ == 'player_move_to':
             def mutator_func(game):
                 game.player.current_scene = game.scenes[target]
@@ -356,12 +387,14 @@ class _Mutator:
 
 
 class Shell:
+    # TODO: DOCUMENTATION
 
     def __init__(self, width, indentation='    '):
         self.usable_width = width - 2 * len(indentation)
         self.indentation = indentation
 
     def print(self, paragraphs, alignment):
+        # TODO: DOCUMENTATION
         for paragraph in paragraphs:
             if alignment == 'left':
                 print(indent(text=fill(text=paragraph, width=self.usable_width), prefix=self.indentation))
@@ -371,6 +404,7 @@ class Shell:
             print()  # pad bottom of paragraphs
 
     def get_player_input(self, message=None):
+        # TODO: DOCUMENTATION
         # TODO add some checks in here
         player_input = None
         if message:
@@ -389,6 +423,7 @@ class Shell:
         return player_input
 
     def pause(self):
+        # TODO: DOCUMENTATION
         if OS_NAME == 'nt':
             self.print(paragraphs=["Press any key to continue..."], alignment='left')
             _ = msvcrt.getch()
@@ -398,11 +433,13 @@ class Shell:
 
     @staticmethod
     def clear():
+        # TODO: DOCUMENTATION
         os.system(command='cls' if OS_NAME == 'nt' else 'clear')
         print()  # pad top of screen
 
 
 class Player:
+    # TODO: DOCUMENTATION
 
     def __init__(self, initial_scene, initial_inventory, states, visited_scene_names):
         self.current_scene = initial_scene
@@ -411,5 +448,10 @@ class Player:
         self.visited_scene_names = visited_scene_names
 
     def save(self, fp):
+        # TODO: DOCUMENTATION
         with open(file=fp, mode='wb') as f:
             dump(obj=self, file=f)
+
+    def load(self, fp):
+        # TODO
+        pass
