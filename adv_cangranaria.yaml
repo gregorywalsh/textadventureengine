@@ -1,212 +1,232 @@
 # YAML Adventure File YAF -  format v1 - 2019
 
+--- # METADATA
 title: 'CANGRANARIA, AN ISLAND ADVENTURE!'
 first_scene: 'beach_lying'
 first_action: '_arrive'
 
---- !Scenes
-beach_lying:
+--- # SCENES
+- !Scene
+  key: beach_lying
   actions:
-    look:
-      -
-        text: >
-          You stare up at a bleary blue sky.
+    - !Action
+      key: look
+      outcomes:
+        - !Outcome
+          text:
+            - >
+              You stare up at a bleary blue sky.
+    - !Action
+      key: die
+      outcomes:
+        - !Outcome
+          mutators:
+            - !Mutator
+              type: game_end
+          text:
+            - >
+              You close your eyes and let your body go limp. It was all just too much...
+    - !Action
+      key: stand
+      outcomes:
+        - !Outcome
+          mutators:
+            - !Mutator
+              type: player_move_to
+              target: beach_standing
+          text:
+            - >
+              You sit up, coughing and spluttering, salt water streaming from your nose. The tattered remains of your
+              clothing are drenched.
+    - !Action
+      key: _arrive
+      outcomes:
+        - !Outcome
+          mutators:
+            - !Mutator
+              type: player_arrive
+              target: beach_lying
+          text:
+            - >
+              Lying on your back, you awaken to the sound of sea water rushing about your ears. Barely conscious, you
+              open your eyes slowly and see a glaring sky above.
+            - >
+              Ouch! Something just nipped your toe! What do you do?
+    - !Action
+      key: _no_match
+      outcomes:
+        - !Outcome
+          text:
+            - >
+              Perhaps you should stand up first...
 
-    die:
-      - mutators:
-          game_end: die
-        text: >
-          You close your eyes and let your body go limp. It was all just too much...
-
-    stand:
-      - mutators:
-          player_move_to:
-            - beach_standing
-        text: >
-          You sit up, coughing and spluttering, salt water streaming from your nose. The tattered remains of your clothing
-          are drenched.
-
-    _arrive:
-      - mutators:
-          player_arrive:
-            - beach_lying
-        text:
-          - >
-            Lying on your back, you awaken to the sound of sea water rushing about your ears. Barely conscious, you
-            open your eyes slowly and see a glaring sky above.
-          - >
-            Ouch! Something just nipped your toe! What do you do?
-
-    _no_match:
-      - text: >
-          Perhaps you should stand up first before you try that...
-
-
-beach_standing:
-  actions:
-    look:
-      - text: &beach_standing_look_text >
-          - >
-            The beach where you awoke stretches out before you, jagged cliffs tower along its length. A few crabs
-            scuttle and wash around in the sea foam.
-          - >
-            To the south a old man appears to be fishing. To the north the beach curves
-            out of view.
-
-    look crab:
-      - text: >
-          They're scuttling around your feet. They look hungry. And tasty.
-
-    get crab:
-      - reqs:
-          has_item:
-            - crab
-        text: >
-          You already have a crab. No need to be greedy.
-      - &beach_standing_get_crab_has_bag_net_not_has_crab
-        reqs:
-          has_item:
-            - bag
-            - net
-          not_has_item:
-            - crab
-        text: >
-          With a wiggling toe, you patiently bait the crabs. Just as one is about to chop it off with its big
-          claw, you toss the net over it and then stuff it in your bag. Gotcha!
-        mutators:
-          add_item:
-            - crab
-      - reqs:
-          not_has_item:
-            - crab
-            - net
-        text: >
-          With a wiggling toe, you patiently bait the crabs. Just as one is about to chop it off with its big
-          claw, you try to scoop it up but it scuttles off into the sea before you can catch it.
-      - &beach_standing_get_crab_has_net_not_has_crab_bag
-        reqs:
-          has_item:
-            - net
-          not_has_item:
-            - crab
-            - bag
-        text: >
-          With a wiggling toe, you patiently bait the crabs. Just as one is about to chop it off with its big
-          claw, you toss the net over it, but a few moments later it crawls out and scuttles off into the sea. If only
-          you had something to keep it in.
-
-    use net: &beach_standing_use_net
-      - reqs:
-          not_has_item:
-            - net
-        text: >
-          You don't have a net.
-      - *beach_standing_get_crab_has_bag_net_not_has_crab
-      - *beach_standing_get_crab_has_net_not_has_crab_bag
-
-    use net crab: *beach_standing_use_net
-
-    sit:
-      - mutators:
-          player_move_to:
-            - beach_lying
-        text: >
-          You sit down. A sudden wooziness comes over you.
-
-    go north: &cove_go_north
-      - mutators:
-          player_move_to:
-            - cove
-        text: >
-          You walk northwards along the base of the cliff. The occasional seagull swoops down and glides along
-          shore searching for fish in the shallow water.
-
-    go cove: *cove_go_north
-
-    _arrive:
-      - reqs:
-          not_has_visited:
-            - beach_standing
-        mutators:
-          player_arrive:
-            - beach_standing
-        text:
-          - >
-            As you stagger to your feet and brush the sand from your sunburned face, you notice a colony of crabs
-            skittering this way at the shoreline. Behind you to the west, an impassable rock face, one hundred feet
-            or more high, towers along the length of the beach.
-          - >
-            To the south a old man appears to be fishing. To the north the beach curves out of view.
-      - reqs:
-          has_visited:
-            - beach_standing
-        mutators:
-          player_arrive:
-            - beach_standing
-        text: *beach_standing_look_text
-
-cove:
-  actions:
-    look:
-      - text:
-          A small blue rowing boat sits on the sand. To the west, where the cove is most secluded, a steep path
-          disappears up into the cliffside.
-
-    look boat:
-      - reqs:
-          has_item:
-            - net
-        text: >
-          The words "The Dancer" are scrawled across the rear in peeling red paint. The sand is churned up where you
-          pulled the net out.
-      - reqs:
-          not_has_item:
-            - net
-        text:
-          The words "The Dancer" are scrawled across the rear in peeling red paint. A net is wedged beneath it.
-        mutators:
-          add_state:
-            - looked_at_dancer
-
-    look net:
-      - reqs:
-          has_state:
-            - looked_at_dancer
-        text: >
-          A weathered, but usable, fishing net.
-
-    get net:
-      - reqs:
-          has_state:
-            - looked_at_dancer
-        mutators:
-          add_item:
-            - net
-        text: >
-          With a bit of tugging you pull the net free.
-
-    go west: &cove_go_west
-      -
-        text: >
-          Walking northwards along the base of the cliff, you see the occasional seagull swooping down to hunt for fish
-          in the shallow water.
-        mutators:
-          player_move_to:
-            - cove_path
-
-    go path: *cove_go_west
-
-    go south:
-      - text: >
-          You head south down the coast past the swooping seagulls.
-        mutators:
-          player_move_to:
-            - beach_standing
-
-    _arrive:
-      - text: >
-          Eventually, you arrive at the edge of the cove where a small boat sits on the sand. A steep path disappears
-          up into the cliffside to the west.
-        mutators:
-          player_arrive:
-            - cove
+#- !Scene
+#  name: beach_standing
+#  actions:
+#    look:
+#      - text: &beach_standing_look_text >
+#          - >
+#            The beach where you awoke stretches out before you, jagged cliffs tower along its length. A few crabs
+#            scuttle and wash around in the sea foam.
+#          - >
+#            To the south a old man appears to be fishing. To the north the beach curves
+#            out of view.
+#
+#    look crab:
+#      - text: >
+#          They're scuttling around your feet. They look hungry. And tasty.
+#
+#    get crab:
+#      - reqs:
+#          has_item:
+#            - crab
+#        text: >
+#          You already have a crab. No need to be greedy.
+#      - &beach_standing_get_crab_has_bag_net_not_has_crab
+#        reqs:
+#          has_item:
+#            - bag
+#            - net
+#          not_has_item:
+#            - crab
+#        text: >
+#          With a wiggling toe, you patiently bait the crabs. Just as one is about to chop it off with its big
+#          claw, you toss the net over it and then stuff it in your bag. Gotcha!
+#        mutators:
+#          add_item:
+#            - crab
+#      - reqs:
+#          not_has_item:
+#            - crab
+#            - net
+#        text: >
+#          With a wiggling toe, you patiently bait the crabs. Just as one is about to chop it off with its big
+#          claw, you try to scoop it up but it scuttles off into the sea before you can catch it.
+#      - &beach_standing_get_crab_has_net_not_has_crab_bag
+#        reqs:
+#          has_item:
+#            - net
+#          not_has_item:
+#            - crab
+#            - bag
+#        text: >
+#          With a wiggling toe, you patiently bait the crabs. Just as one is about to chop it off with its big
+#          claw, you toss the net over it, but a few moments later it crawls out and scuttles off into the sea. If only
+#          you had something to keep it in.
+#
+#    use net: &beach_standing_use_net
+#      - reqs:
+#          not_has_item:
+#            - net
+#        text: >
+#          You don't have a net.
+#      - *beach_standing_get_crab_has_bag_net_not_has_crab
+#      - *beach_standing_get_crab_has_net_not_has_crab_bag
+#
+#    use net crab: *beach_standing_use_net
+#
+#    sit:
+#      - mutators:
+#          player_move_to:
+#            - beach_lying
+#        text: >
+#          You sit down. A sudden wooziness comes over you.
+#
+#    go north: &cove_go_north
+#      - mutators:
+#          player_move_to:
+#            - cove
+#        text: >
+#          You walk northwards along the base of the cliff. The occasional seagull swoops down and glides along
+#          shore searching for fish in the shallow water.
+#
+#    go cove: *cove_go_north
+#
+#    _arrive:
+#      - reqs:
+#          not_has_visited:
+#            - beach_standing
+#        mutators:
+#          player_arrive:
+#            - beach_standing
+#        text:
+#          - >
+#            As you stagger to your feet and brush the sand from your sunburned face, you notice a colony of crabs
+#            skittering this way at the shoreline. Behind you to the west, an impassable rock face, one hundred feet
+#            or more high, towers along the length of the beach.
+#          - >
+#            To the south a old man appears to be fishing. To the north the beach curves out of view.
+#      - reqs:
+#          has_visited:
+#            - beach_standing
+#        mutators:
+#          player_arrive:
+#            - beach_standing
+#        text: *beach_standing_look_text
+#
+#- !Scene
+#  name: cove
+#  actions:
+#    look:
+#      - text:
+#          A small blue rowing boat sits on the sand. To the west, where the cove is most secluded, a steep path
+#          disappears up into the cliffside.
+#
+#    look boat:
+#      - reqs:
+#          has_item:
+#            - net
+#        text: >
+#          The words "The Dancer" are scrawled across the rear in peeling red paint. The sand is churned up where you
+#          pulled the net out.
+#      - reqs:
+#          not_has_item:
+#            - net
+#        text:
+#          The words "The Dancer" are scrawled across the rear in peeling red paint. A net is wedged beneath it.
+#        mutators:
+#          add_state:
+#            - looked_at_dancer
+#
+#    look net:
+#      - reqs:
+#          has_state:
+#            - looked_at_dancer
+#        text: >
+#          A weathered, but usable, fishing net.
+#
+#    get net:
+#      - reqs:
+#          has_state:
+#            - looked_at_dancer
+#        mutators:
+#          add_item:
+#            - net
+#        text: >
+#          With a bit of tugging you pull the net free.
+#
+#    go west: &cove_go_west
+#      -
+#        text: >
+#          Walking northwards along the base of the cliff, you see the occasional seagull swooping down to hunt for fish
+#          in the shallow water.
+#        mutators:
+#          player_move_to:
+#            - cove_path
+#
+#    go path: *cove_go_west
+#
+#    go south:
+#      - text: >
+#          You head south down the coast past the swooping seagulls.
+#        mutators:
+#          player_move_to:
+#            - beach_standing
+#
+#    _arrive:
+#      - text: >
+#          Eventually, you arrive at the edge of the cove where a small boat sits on the sand. A steep path disappears
+#          up into the cliffside to the west.
+#        mutators:
+#          player_arrive:
+#            - cove
