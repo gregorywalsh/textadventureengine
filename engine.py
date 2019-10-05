@@ -7,8 +7,6 @@ and an associated Input Parsing File (IPF).
 
 import os
 import yaml
-from collections import defaultdict
-from functools import partial
 from pickle import dump
 from textwrap import wrap, fill, indent
 
@@ -23,112 +21,140 @@ class Game:
 
     Args:
         game_data_fp (str): file path to a SAF
-        input_parser (InputParser): an InputParser object for parsing Player inputs
+        input_parser (InputParser): an InputParser object for parsing player inputs
         shell (Shell): a Shell for displaying the game and getting inputs
-        player (Player): a Player object with state info such as inventory, location, etc.
+        player (Player): a player object with state info such as inventory, location, etc.
 
     Attributes:
-        player (Player): The Player of the game
+        player (Player): The player of the game
         shell (Shell): The Game's shell. Can be used to print messages
     """
 
     def __init__(self, game_data_fp, input_parser, shell, player):
         self.player = player
-        self.shell = shell
-        self._input_parser = input_parser
+        self.input_parser = input_parser
+        self._shell = shell
         self._metadata, self.scenes = Game._load_game_data(self, game_data_fp)
         self._in_progress = True
 
     def start(self):
         """
-        Initialises the Game by printing the title screen and beginning the input/action loop
+        Initialises the Game by printing the title screen and beginning the input/actions loop.
 
         Returns:
             None
         """
-        self.shell.clear()
-        self.shell.print(
+        self._shell.clear()
+        self._shell.print(
             paragraphs=['Welcome to', self._metadata['title']],
             alignment='centre'
         )
-        self.shell.print(
+        self._shell.print(
             paragraphs=['To play the game, enter simple commands such as "look", "go north" or "give apple to man".'],
             alignment='left'
         )
-        self.shell.pause()
-        self.shell.clear()
+        self._shell.pause()
+        self._shell.clear()
         self.player.current_scene = self.scenes[self._metadata['first_scene']]
-        self._play(override_input=self._metadata['first_action'])
+        self.play(override_key=self._metadata['first_action_key'])
         while self._in_progress:
-            self._play()
+            self.play()
 
-    def _play(self, override_input=None):
-        """ Performs a single game loop:
-            request input -> find matching Action -> determine Outcome and execute associated Mutators
+    def play(self, override_key=None):
         """
-        text_input = override_input or self.shell.get_player_input()
-        input_action_key = self._input_parser.generate_action_key(text_input=text_input)
+        Performs a single game step:
+            - request input
+            - find matching actions
+            - determine outcome by requirements
+            - execute associated mutators
+
+        If override_key given, player not asked for input
+
+        Args:
+            override_key (:obj:`str`, optional): Replaces player input
+
+        Returns:
+            None
+        """
+        input_action_key = override_key or self.input_parser.make_action_key(text_input=self._shell.get_player_input())
         action = self._match_action(input_action_key=input_action_key)
-        outcome = self._match_outcome(action)
-        if outcome:
-            self._process_outcome(outcome)
+        if action:
+            outcome = self._match_outcome(action)
+            if outcome:
+                self._process_outcome(outcome=outcome)
+            else:
+                self._shell.print(
+                    paragraphs=['You cannot do that now.'],
+                    alignment='left'
+                )
         else:
-            self.shell.print(
+            self._shell.print(
                 paragraphs=['You cannot do that now.'],
                 alignment='left'
             )
 
     def _match_action(self, input_action_key):
-        """ Given an input, returns the first matching Action. Falls back to a default if there is one."""
+        """ Given an input, returns first matching actions. Falls back to default '_no_match' action if available."""
         get_action = self.player.current_scene.actions.get
         return get_action(input_action_key) or get_action(frozenset(['_no_match']))
 
     def _match_outcome(self, action):
-        """ Given an Action, returns the first possible matching Outcome by checking requirements against
-            the Player's state.
-            Examples:
-                1. Player WITHOUT 'knife' attempts cut 'rope' by inputting "cut rope". The outcome may
-                   be that the rope remains intact, and a msg saying so could be displayed.
-                2. Player WITH 'knife' attempts cut 'rope' by inputting "cut rope". The outcome may
-                   be that the rope is cut and placed in their inventory. A msg saying so could also be displayed.
+        """ Given an actions, returns the first possible matching outcome by checking requirements against
+            the player's state.
         """
         matched_outcomes = [outcome for outcome in action.outcomes if outcome.check_requirements(self.player)]
         return matched_outcomes[0] if matched_outcomes else None
 
     def _process_outcome(self, outcome):
         """Processes outcome, e.g. change player location, and updates shell"""
-        if outcome.clear:
-            self.shell.clear()
-        self.shell.print(
-            paragraphs=outcome.text,
-            alignment='left'
-        )
-        self._update_states(outcome)
+        player_original_scene = self.player.current_scene
+        self._update_states(mutators=outcome.mutators)
+        if player_original_scene != self.player.current_scene:
+            self._shell.clear()
+            self._shell.print(
+                paragraphs=outcome.text,
+                alignment='left'
+            )
+            self.play(override_key=frozenset(['_arrive']))
+        else:
+            self._shell.print(
+                paragraphs=outcome.text,
+                alignment='left'
+            )
 
-    def _update_states(self, outcome):
+    def _update_states(self, mutators):
         """Given an outcome, modifies player states e.g. location, inventory."""
-        for state_mutator in outcome.mutators:
+        for state_mutator in mutators:
             state_mutator.mutator_func(self)
 
     def _load_game_data(self, game_data_fp):
-        """Loads a YAML Adventure File (game metadata and a list of Scenes) from disk"""
-        yaml.add_constructor(tag='!Scene', constructor=_Scene.pyyaml_constructor, Loader=yaml.SafeLoader)
-        action_constructor = _Action.make_pyyaml_constructor(input_parser=self._input_parser)
-        yaml.add_constructor(tag='!Action', constructor=action_constructor, Loader=yaml.SafeLoader)
-        yaml.add_constructor(tag='!Outcome', constructor=_Outcome.pyyaml_constructor, Loader=yaml.SafeLoader)
-        yaml.add_constructor(tag='!Mutator', constructor=_Mutator.construct_from_yaml, Loader=yaml.SafeLoader)
-        # yaml.add_constructor(tag='!Requirement', constructor=_Requirement.construct_from_yaml, Loader=yaml.SafeLoader)
+        """Loads a YAML Adventure File (game metadata and a list of scenes) from disk"""
+        loader = yaml.SafeLoader
+        yaml.add_constructor(tag='!Metadata', constructor=Game._pyyaml_meta_data_constructor, Loader=loader)
+        yaml.add_constructor(tag='!Scene', constructor=_Scene.pyyaml_constructor, Loader=loader)
+        action_constructor = _Action.make_pyyaml_constructor(input_parser=self.input_parser)
+        yaml.add_constructor(tag='!Action', constructor=action_constructor, Loader=loader)
+        yaml.add_constructor(tag='!Outcome', constructor=_Outcome.pyyaml_constructor, Loader=loader)
+        yaml.add_constructor(tag='!Mutator', constructor=_Mutator.pyyaml_constructor, Loader=loader)
+        yaml.add_constructor(tag='!Requirement', constructor=_Requirement.pyyaml_constructor, Loader=loader)
         with open(game_data_fp, 'r') as f:
             meta_data, scenes = list(yaml.safe_load_all(stream=f))
         return meta_data, {scene.key: scene for scene in scenes}
 
+    @staticmethod
+    def _pyyaml_meta_data_constructor(loader, node):
+        """defines a constructor for a PyYAML loader"""
+        data = loader.construct_mapping(node, deep=True)
+        first_action_key = frozenset([data['first_action']])
+        return {'title': data['title'], 'first_scene': data['first_scene'], 'first_action_key': first_action_key}
+
 
 class InputParser:
     """
-    Converts Player inputs into action-keys that can then be used to find matching Actions for a Scene.
+    Converts player inputs into actions-keys that can then be used to find matching actions for a scene.
 
     Args:
-        stop_words (iter of str): short words that should be excluded when creating action-keys
+        stop_words (iter of str): short words that should be excluded when creating actions-keys
         synonyms (dict): mappings from synonyms (take, grab) to a canonical version (get)
     """
 
@@ -136,13 +162,13 @@ class InputParser:
         self._stop_words = stop_words
         self._synonyms = synonyms
 
-    def generate_action_key(self, text_input):
+    def make_action_key(self, text_input):
         """
-        Converts a player input to an action-key by removing stopwords and converting synonyms to their
+        Converts a player input to an actions-key by removing stopwords and converting synonyms to their
         canonical versions.
 
         Returns:
-            An action-key (frozenset)
+            An actions-key (frozenset)
         """
         important_words = [w for w in text_input.split(' ') if w not in self._stop_words]
         translated_action_key = frozenset(self._synonyms[w] if w in self._synonyms else w for w in important_words)
@@ -170,7 +196,6 @@ class InputParser:
                     scoop: get
                     fill: get
                     collect: get
-
         Args:
             parsing_data_fp (str): file path of a YAML encoded parsing data
 
@@ -192,15 +217,18 @@ class InputParser:
 
 class _Scene:
     """
-    Scene object containing a list of possible Actions.
+    Contains a list of possible actions.
+
+    Note:
+        A scene must always contain the '_arrive' action
 
     Args:
         key (str): name of the Scene
-        actions_list (list of Actions): list containing all possible actions in a Scene
+        actions_list (list of _Action): list containing all possible actions in a scene
 
     Attributes:
-        key (str): name of the Scene
-        actions (dict of Actions): dict containing all possible actions in a Scene by their key
+        key (str): name of the scene
+        actions (dict of _Action): dict containing all possible actions in a scene by their key
     """
     def __init__(self, key, actions_list):
         self.key = key
@@ -221,8 +249,11 @@ class _Scene:
                 - !Scene
                   id: a_unique_scene_id
                   actions:
-                    [A LIST OF ACTIONS HERE]
-
+                    - !Action
+                      key: _arrive  # The mandatory '_arrive' action
+                      outcomes:
+                        [A LIST OF OUTCOMES FOR THE '_arrive' ACTION]
+                    [A LIST OF FURTHER ACTIONS]
         """
         data = loader.construct_mapping(node, deep=True)
         return cls(key=data['key'], actions_list=data['actions'])
@@ -230,94 +261,164 @@ class _Scene:
 
 class _Action:
     """
-    Action object containing a list of possible Outcomes. The id is matched against the player input
+    Actions are matched against a player input to determine what happens.
+
+    Each action contains a list of possible outcomes. Each action's key should be unique
+    within a scene.
 
     Args:
-        key (frozenset): a set of keywords that uniquely identifies the Action per scene
-        outcomes (list of Outcomes): list containing all possible Outcomes for the Action
+        key (frozenset): an immutable set of words that uniquely identifies the actions per scene
+        outcomes (list of _Outcome): list containing all possible outcomes for the actions
 
     Attributes:
-        key (frozenset): a unique set of keywords that identify the Action
-        outcomes (list of Outcomes): list containing all possible Outcomes for the Action
+        key (frozenset): a unique set of keywords that identify the actions
+        outcomes (list of _Outcome): list containing all possible outcomes for the actions
     """
 
     def __init__(self, key, outcomes):
         self.key = key
         self.outcomes = outcomes
-        self._validate_outcomes()
 
     @classmethod
     def make_pyyaml_constructor(cls, input_parser):
         """
-        Creates a pyyaml constructor for Actions with a specific input_parser.
+        Creates a PyYAML constructor for actions with a specific input_parser.
 
         Args:
-            input_parser (InputParser): an InputParser that will be used to process the action keys
+            input_parser (InputParser): an InputParser that will be used to process the actions keys
 
         Returns:
-            A pyyaml_constructor for Actions
+            A pyyaml_constructor for actions
         """
         def pyyaml_constructor(loader, node):
             """
-            Constructor for a PyYAML loader that generates Actions from a YAF elements tagged with '!Action'
-            # TODO: DOCUMENTATION
+            Constructor for a PyYAML loader that generates actions from a YAF elements tagged with '!Action'
+
+                Example YAML element::
+
+                    - !Action
+                      key: beach
+                      outcomes:
+                        [A LIST OF OUTCOMES]
             """
             data = loader.construct_mapping(node, deep=True)
-            key = input_parser.generate_action_key(data['key'])
+            key = input_parser.make_action_key(data['key'])
             return cls(key=key, outcomes=data['outcomes'])
         return pyyaml_constructor
 
-    def _validate_outcomes(self):
-        # TODO
-        pass
-
 
 class _Outcome:
-    # TODO: DOCUMENTATION
+    """
+    Models one of one or many possible results of a particular action.
 
-    def __init__(self, clear, requirements=None, mutators=None, text=None):
+    Upon an outcome being executed, contingent on all of the outcome's requirements being met,
+    the player's state will be altered by any mutators associated with the outcome. Every outcome
+    must have some descriptive "text".
+
+    Examples:
+        1. Player WITHOUT 'knife' in inventory attempts cut a rope in the scene by inputting "cut rope".
+        The outcome may be that the rope remains intact, since a "has knife" requirement was not met.
+        An msg saying so could be displayed if the requirement was instead "not has knife".
+        2. Player WITH 'knife' in inventory attempts cut a rope in the scene by inputting "cut rope".
+        The outcome may be that the rope is cut and placed in their inventory, since a "has knife"
+        requirement was met. A msg, from outcome.text, saying so will be displayed.
+
+    Args:
+        text (list of str): A list of paragraphs describing the outcome
+        requirements (list of _Requirement): A list of the requirements necessary to trigger the outcome
+        mutators (list of _Mutator): A list of the mutators applied when the outcome is triggered
+
+    Attributes:
+        text (list of str): A list of paragraphs describing the outcome
+        requirements (list of _Requirement): A list of the requirements necessary to trigger the outcome
+        mutators (list of _Mutator): A list of the mutators applied when the outcome is triggered
+    """
+
+    def __init__(self, text, requirements=None, mutators=None):
+        self.text = text
         self.requirements = requirements if requirements else []
         self.mutators = mutators if mutators else []
-        self.text = text if text else []
-        self.clear = clear
 
     def check_requirements(self, player):
-        # TODO: DOCUMENTATION
-        return all(requirement.check(player) for requirement in self.requirements)
+        """
+        Determines if all requirements associated with an outcome are met
+
+        Args:
+            player (Player): The player of the game
+
+        Returns:
+            True if no requirements or if all requirements met else False
+        """
+        return all(requirement.check_func(player) for requirement in self.requirements)
 
     @classmethod
     def pyyaml_constructor(cls, loader, node):
         """
-        Constructor for a PyYAML loader that generates Outcomes from a YAF elements tagged with '!Outcome'
-        # TODO: DOCUMENTATION
+        Constructor for a PyYAML loader that generates outcomes from a YAF elements tagged with '!Outcome'
+
+            Example YAML element::
+
+                - !Outcome
+                  requirements:
+                    [AN OPTIONAL LIST OF REQUIREMENTS]
+                  mutators:
+                    [AN OPTIONAL LIST OF MUTATORS]
+                  text:
+                    - >
+                      Some descriptive text
+                    - >
+                      Another paragraph of text
+
+        Returns:
+            An outcome
         """
         data = loader.construct_mapping(node, deep=True)
-        return cls(requirements=data.get('requirements'), mutators=data.get('mutators'),
-                   text=data.get('text'), clear=False)
+        return cls(text=data.get('text'), requirements=data.get('requirements'), mutators=data.get('mutators'),)
 
 
 class _Requirement:
-    # TODO: DOCUMENTATION
+    """
+    Models a singular check on the state of the player.
 
-    def __init__(self, test_func):
-        self.test_func = test_func
+    Args:
+        check_func (function): A function with a single arg 'player' that returns a boolean value given some check
 
-    def check(self, player):
-        # TODO: DOCUMENTATION
-        return self.test_func(player)
+    Attributes:
+        check_func (function): A function with a single arg 'player' that returns a boolean value given some check
+    """
+
+    def __init__(self, check_func):
+        self.check_func = check_func
 
     @classmethod
     def pyyaml_constructor(cls, loader, node):
         """
-        Constructor for a PyYAML loader that generates Requirements from YAF elements tagged with '!Requirement'
-        # TODO: DOCUMENTATION
+        Constructor for a PyYAML loader that generates requirements from YAF elements tagged with '!requirement'
+
+            Example YAML element::
+
+                - !Requirement
+                  type: has_item
+                  target: knife
+
+        Returns:
+            An outcome
         """
         data = loader.construct_mapping(node, deep=True)
-        return cls(test_func=_Requirement.make_check_fnc(type_=data.get('type'), target=data.get('target')))
+        return cls(check_func=_Requirement.make_check_fnc(type_=data.get('type'), target=data.get('target')))
 
     @staticmethod
     def make_check_fnc(type_, target):
-        # TODO: DOCUMENTATION
+        """
+        Choose from a selection of possible check functions
+
+        Args:
+            type_ (str): the type of check, e.g. to check if an item is in the player's inventory use 'has_item'
+            target (str): the name of the key being searched for
+
+        Returns:
+            a function which applies the selected check
+        """
         if type_ == 'has_item':
             def check_func(player):
                 return target in player.inventory
@@ -342,27 +443,44 @@ class _Requirement:
 
 
 class _Mutator:
-    # TODO: DOCUMENTATION
+    """
+    Changes some state on the player when applied
+    Args:
+        mutator_func: a function that takes a game object and makes some update to the player's state
+    """
 
     def __init__(self, mutator_func):
         self.mutator_func = mutator_func
 
     @classmethod
-    def construct_from_yaml(cls, loader, node):
+    def pyyaml_constructor(cls, loader, node):
         """
-        Constructor for a PyYAML loader that generates a Mutators from YAF elements tagged with '!Mutator'
-        # TODO: DOCUMENTATION
+        Constructor for a PyYAML loader that generates a mutator from YAF elements tagged with '!Mutator'
+
+            Example YAML element::
+
+                - !Requirement
+                  type: has_item
+                  target: knife
         """
         data = loader.construct_mapping(node, deep=True)
         return cls(mutator_func=_Mutator.make_mutator_func(type_=data.get('type'), target=data.get('target')))
 
     @staticmethod
-    def make_mutator_func(type_, target):
-        # TODO: DOCUMENTATION
+    def make_mutator_func(type_, target=None):
+        """
+        Choose from a selection of possible mutators
+
+        Args:
+            type_ (str): the type of mutator, e.g. to move a player to a new scene 'player_move_to'
+            target (str): the name of the key to set, e.g. 'beach'
+
+        Returns:
+            a function which applies the selected state mutation
+        """
         if type_ == 'player_move_to':
             def mutator_func(game):
                 game.player.current_scene = game.scenes[target]
-                game._play('_arrive')
         elif type_ == 'player_arrive':
             def mutator_func(game):
                 game.player.visited_scene_names.add(game.scenes[target].key)
@@ -382,7 +500,7 @@ class _Mutator:
             def mutator_func(game):
                 game._in_progress = False
         else:
-            raise ValueError('"{}" is not a valid mutator type'.format(type_))
+            raise ValueError('"{t}" is not a valid mutator type'.format(t=type_))
         return mutator_func
 
 
